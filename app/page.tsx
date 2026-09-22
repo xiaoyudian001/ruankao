@@ -28,7 +28,7 @@ const fmt = (d: Date) => new Intl.DateTimeFormat("zh-CN", { month:"2-digit", day
 const isoDate = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone:"Asia/Shanghai" }).format(d);
 const blankCheckin = (studyDate = isoDate(new Date())) => ({ studyDate, content:"", duration:"90", questions:"20", confidence:"3" });
 const studyStates = [
-  { value: 1, emoji: "😫", label: "很疲惫" },
+  { value: 1, emoji: "😴", label: "需要休息" },
   { value: 2, emoji: "😕", label: "状态欠佳" },
   { value: 3, emoji: "😐", label: "一般" },
   { value: 4, emoji: "🙂", label: "状态良好" },
