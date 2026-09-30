@@ -21,3 +21,32 @@ export const materials = sqliteTable("materials", {
   size: integer("size").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const textbookSessions = sqliteTable("textbook_sessions", {
+  id: text("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  title: text("title").notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const textbookJobs = sqliteTable("textbook_jobs", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull().references(() => textbookSessions.id),
+  ownerId: text("owner_id").notNull(),
+  question: text("question").notNull(),
+  status: text("status").notNull().default("queued"),
+  answer: text("answer"),
+  error: text("error"),
+  createdAt: integer("created_at").notNull(),
+  completedAt: integer("completed_at"),
+  lease: text("lease"),
+  leasedAt: integer("leased_at"),
+  elapsedMs: integer("elapsed_ms"),
+});
+
+export const textbookBridge = sqliteTable("textbook_bridge", {
+  id: text("id").primaryKey(),
+  lastSeen: integer("last_seen").notNull(),
+  ready: integer("ready").notNull().default(0),
+});

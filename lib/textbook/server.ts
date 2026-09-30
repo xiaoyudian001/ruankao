@@ -1,0 +1,40 @@
+import { env } from 'cloudflare:workers';
+import { getChatGPTUser } from '../../app/chatgpt-auth';
+import { bridgeAuthorized, bridgeOnline, isOwner } from './policy';
+
+type Runtime = { DB?: D1Database; RAG_BRIDGE_SECRET?: string; RAG_OWNER_EMAIL?: string; RAG_SITE_ORIGIN?: string };
+export const runtime = () => env as unknown as Runtime;
+export const now = () => Math.floor(Date.now() / 1000);
+export function database(): D1Database {
+  const db = runtime().DB;
+  if (!db) throw new Error('Database unavailable');
+  return db;
+}
+export const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
+export async function owner() {
+  const user = await getChatGPTUser();
+  return isOwner(user, runtime().RAG_OWNER_EMAIL ?? '') ? user : null;
+}
+export function sameOrigin(request: Request): boolean {
+  const origin = request.headers.get('origin');
+  return Boolean(origin && origin === (runtime().RAG_SITE_ORIGIN ?? new URL(request.url).origin));
+}
+export const bridgeAuth = (request: Request) => bridgeAuthorized(request.headers.get('authorization'), runtime().RAG_BRIDGE_SECRET ?? '');
+export async function bridgeState() {
+  const state = await database().prepare('SELECT last_seen, ready FROM textbook_bridge WHERE id = ?').bind('desktop').first<{ last_seen: number; ready: number }>();
+  return { online: bridgeOnline(state, now()) };
+}
+export async function expireJobs() {
+  await database().batch([
+    database().prepare("UPDATE textbook_jobs SET status='failed', error=?, completed_at=? WHERE status='queued' AND created_at < ?").bind('电脑未及时领取问题，请检查连接后重试。', now(), now()-180),
+    database().prepare("UPDATE textbook_jobs SET status='failed', error=?, completed_at=? WHERE status='running' AND leased_at < ?").bind('回答超时，请检查本地服务后重试。', now(), now()-240),
+  ]);
+}
+
+export const CLAIM_SQL = `UPDATE textbook_jobs SET status='running', lease=?, leased_at=?
+WHERE id = (SELECT id FROM textbook_jobs WHERE status='queued' ORDER BY created_at, rowid LIMIT 1)
+AND status='queued' AND NOT EXISTS (SELECT 1 FROM textbook_jobs WHERE status='running')
+RETURNING id, question, session_id, lease`;
+
+export const COMPLETE_SQL = `UPDATE textbook_jobs SET status=?, answer=?, error=?, completed_at=?, elapsed_ms=?, lease=NULL
+WHERE id=? AND status='running' AND lease=? AND leased_at >= ? RETURNING id`;

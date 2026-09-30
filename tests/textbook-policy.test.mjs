@@ -1,0 +1,23 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
+const path = '../lib/textbook/policy.ts';
+test('question validation, offline boundary, owner and bridge separation', async () => {
+  assert.ok(existsSync(new URL(path, import.meta.url)), '教材问答权限策略尚未实现');
+  const p = await import(path);
+  assert.equal(p.isOwner({email:'owner@example.com'},'owner@example.com'),true);
+  assert.equal(p.isOwner(null,'owner@example.com'),false);
+  assert.equal(p.isOwner({email:'visitor@example.com'},'owner@example.com'),false);
+  assert.equal(p.isOwner({email:'owner@example.com'},''),false);
+  assert.equal(p.bridgeAuthorized('Bearer test-secret','test-secret'),true);
+  assert.equal(p.bridgeAuthorized('Bearer wrong','test-secret'),false);
+  assert.equal(p.bridgeAuthorized(null,''),false);
+  assert.equal(p.bridgeOnline({last_seen:100,ready:1},145),true);
+  assert.equal(p.bridgeOnline({last_seen:100,ready:1},146),false);
+  assert.equal(p.bridgeOnline({last_seen:100,ready:0},110),false);
+  assert.equal(p.validQuestion(' MTBF是什么？ '),'MTBF是什么？');
+  assert.throws(()=>p.validQuestion(' '));
+  assert.throws(()=>p.validQuestion('x'.repeat(2001)));
+  assert.equal(p.cleanAnswer('<think>hidden</think>答案 [教材308页]'),'答案 [教材308页]');
+  assert.equal(p.cleanAnswer('答案<think>unfinished'),'答案');
+});
