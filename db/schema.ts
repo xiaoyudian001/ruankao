@@ -35,6 +35,7 @@ export const textbookJobs = sqliteTable("textbook_jobs", {
   sessionId: text("session_id").notNull().references(() => textbookSessions.id),
   ownerId: text("owner_id").notNull(),
   question: text("question").notNull(),
+  retrievalMode: text("retrieval_mode").notNull().default("default"),
   status: text("status").notNull().default("queued"),
   answer: text("answer"),
   error: text("error"),
@@ -49,4 +50,5 @@ export const textbookBridge = sqliteTable("textbook_bridge", {
   id: text("id").primaryKey(),
   lastSeen: integer("last_seen").notNull(),
   ready: integer("ready").notNull().default(0),
+  modes: text("modes").notNull().default('["default"]'),
 });

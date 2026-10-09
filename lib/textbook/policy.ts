@@ -27,3 +27,22 @@ export function cleanAnswer(value: string): string {
 }
 
 export const validId = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9-]{36}$/i.test(value);
+
+export const RETRIEVAL_MODES = { default: '当前问答', complete: '完整检索实验' } as const;
+export type RetrievalMode = keyof typeof RETRIEVAL_MODES;
+export function validRetrievalMode(value: unknown): RetrievalMode {
+  if (value == null) return 'default';
+  if (typeof value !== 'string' || !Object.hasOwn(RETRIEVAL_MODES,value)) throw new Error('检索模式无效。');
+  return value as RetrievalMode;
+}
+export function availableRetrievalModes(state: {last_seen:number;ready:number;modes?:string}|null,time:number): RetrievalMode[] {
+  if (!bridgeOnline(state,time)) return [];
+  try {
+    const modes:unknown=JSON.parse(state?.modes??'["default"]');
+    if (!Array.isArray(modes)) return ['default'];
+    return (Object.keys(RETRIEVAL_MODES) as RetrievalMode[]).filter(mode=>modes.includes(mode));
+  } catch { return ['default']; }
+}
+export function sameJobRequest(prior:{question:string;retrieval_mode:string;session_id:string},question:string,mode:RetrievalMode,session:unknown):boolean {
+  return prior.question===question && prior.retrieval_mode===mode && (session==null || session===prior.session_id);
+}

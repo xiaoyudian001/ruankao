@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { getChatGPTUser } from '../../app/chatgpt-auth';
-import { bridgeAuthorized, bridgeOnline, isOwner } from './policy';
+import { bridgeAuthorized, bridgeOnline, availableRetrievalModes, isOwner } from './policy';
 
 type Runtime = { DB?: D1Database; RAG_BRIDGE_SECRET?: string; RAG_OWNER_EMAIL?: string; RAG_SITE_ORIGIN?: string };
 export const runtime = () => env as unknown as Runtime;
@@ -21,8 +21,8 @@ export function sameOrigin(request: Request): boolean {
 }
 export const bridgeAuth = (request: Request) => bridgeAuthorized(request.headers.get('authorization'), runtime().RAG_BRIDGE_SECRET ?? '');
 export async function bridgeState() {
-  const state = await database().prepare('SELECT last_seen, ready FROM textbook_bridge WHERE id = ?').bind('desktop').first<{ last_seen: number; ready: number }>();
-  return { online: bridgeOnline(state, now()) };
+  const state = await database().prepare('SELECT last_seen, ready, modes FROM textbook_bridge WHERE id = ?').bind('desktop').first<{ last_seen: number; ready: number; modes:string }>();
+  return { online: bridgeOnline(state, now()), availableModes:availableRetrievalModes(state,now()) };
 }
 export async function expireJobs() {
   await database().batch([
@@ -34,7 +34,7 @@ export async function expireJobs() {
 export const CLAIM_SQL = `UPDATE textbook_jobs SET status='running', lease=?, leased_at=?
 WHERE id = (SELECT id FROM textbook_jobs WHERE status='queued' ORDER BY created_at, rowid LIMIT 1)
 AND status='queued' AND NOT EXISTS (SELECT 1 FROM textbook_jobs WHERE status='running')
-RETURNING id, question, session_id, lease`;
+RETURNING id, question, session_id, lease, retrieval_mode`;
 
 export const COMPLETE_SQL = `UPDATE textbook_jobs SET status=?, answer=?, error=?, completed_at=?, elapsed_ms=?, lease=NULL
 WHERE id=? AND status='running' AND lease=? AND leased_at >= ? RETURNING id`;

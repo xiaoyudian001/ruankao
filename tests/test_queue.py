@@ -10,6 +10,8 @@ class QueueTest(unittest.TestCase):
         self.complete=re.search(r'COMPLETE_SQL = `(.+?)`',code,re.S)[1]
         self.db.execute("INSERT INTO textbook_jobs VALUES ('one','MTBF','session','queued',NULL,NULL,10,NULL,NULL,NULL,NULL)")
         self.db.execute("INSERT INTO textbook_jobs VALUES ('two','MTTR','session2','queued',NULL,NULL,11,NULL,NULL,NULL,NULL)")
+        self.db.execute("ALTER TABLE textbook_jobs ADD retrieval_mode TEXT NOT NULL DEFAULT 'default'")
+        self.db.execute("UPDATE textbook_jobs SET retrieval_mode='complete' WHERE id='two'")
     def test_one_running_and_reject_wrong_or_expired_completion(self):
         self.assertEqual(self.db.execute(self.claim,('lease-1',20)).fetchone()[0],'one')
         self.assertIsNone(self.db.execute(self.claim,('lease-2',21)).fetchone())
@@ -20,7 +22,20 @@ class QueueTest(unittest.TestCase):
         args[-1]=0
         self.assertEqual(self.db.execute(self.complete,args).fetchone()[0],'one')
         self.assertIsNone(self.db.execute(self.complete,args).fetchone())
-        self.assertEqual(self.db.execute(self.claim,('lease-2',23)).fetchone()[0],'two')
+        claimed=self.db.execute(self.claim,('lease-2',23)).fetchone()
+        self.assertEqual(claimed[0],'two')
+        self.assertEqual(claimed[-1],'complete')
+
+    def test_mode_migration_defaults_historical_rows(self):
+        self.assertEqual(self.db.execute("SELECT retrieval_mode FROM textbook_jobs WHERE id='one'").fetchone()[0],'default')
+        # Run actual generated migration on the old schema, not a hand-written approximation.
+        db=sqlite3.connect(':memory:')
+        db.executescript('CREATE TABLE textbook_jobs(id TEXT); INSERT INTO textbook_jobs VALUES ("old"); CREATE TABLE textbook_bridge(id TEXT); INSERT INTO textbook_bridge VALUES ("desktop");')
+        sql=(Path(__file__).parents[1]/'drizzle/0002_naive_war_machine.sql').read_text(encoding='utf-8')
+        db.executescript(sql)
+        self.assertEqual(db.execute('SELECT retrieval_mode FROM textbook_jobs').fetchone()[0],'default')
+        self.assertEqual(db.execute('SELECT modes FROM textbook_bridge').fetchone()[0],'["default"]')
+        db.close()
     def tearDown(self): self.db.close()
 
 if __name__=='__main__':unittest.main()

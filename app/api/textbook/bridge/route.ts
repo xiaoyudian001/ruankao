@@ -1,5 +1,5 @@
 import { bridgeAuth, CLAIM_SQL, COMPLETE_SQL, database, expireJobs, json, now } from '../../../../lib/textbook/server';
-import { cleanAnswer, validId } from '../../../../lib/textbook/policy';
+import { cleanAnswer, validId, RETRIEVAL_MODES } from '../../../../lib/textbook/policy';
 
 export async function POST(request: Request) {
   if (!bridgeAuth(request)) return json({error:'Unauthorized'},401);
@@ -7,7 +7,8 @@ export async function POST(request: Request) {
     if (Number(request.headers.get('content-length') ?? 0)>250000) return json({error:'Payload too large'},413);
     const body = await request.json() as Record<string,unknown>;
     if (body.action === 'heartbeat') {
-      await database().prepare('INSERT INTO textbook_bridge (id,last_seen,ready) VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen, ready=excluded.ready').bind('desktop',now(),body.ready===true?1:0).run();
+      const modes=Array.isArray(body.modes)?Object.keys(RETRIEVAL_MODES).filter(mode=>(body.modes as unknown[]).includes(mode)):['default'];
+      await database().prepare('INSERT INTO textbook_bridge (id,last_seen,ready,modes) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen, ready=excluded.ready, modes=excluded.modes').bind('desktop',now(),body.ready===true?1:0,JSON.stringify(modes)).run();
       return json({ok:true});
     }
     if (body.action === 'claim') {
