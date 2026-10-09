@@ -1,5 +1,6 @@
 import { bridgeAuth, CLAIM_SQL, COMPLETE_SQL, database, expireJobs, json, now } from '../../../../lib/textbook/server';
 import { cleanAnswer, validId, RETRIEVAL_MODES } from '../../../../lib/textbook/policy';
+import { rewriteDiagnostic } from '../../../../lib/textbook/conversation';
 
 export async function POST(request: Request) {
   if (!bridgeAuth(request)) return json({error:'Unauthorized'},401);
@@ -8,7 +9,7 @@ export async function POST(request: Request) {
     const body = await request.json() as Record<string,unknown>;
     if (body.action === 'heartbeat') {
       const modes=Array.isArray(body.modes)?Object.keys(RETRIEVAL_MODES).filter(mode=>(body.modes as unknown[]).includes(mode)):['default'];
-      await database().prepare('INSERT INTO textbook_bridge (id,last_seen,ready,modes) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen, ready=excluded.ready, modes=excluded.modes').bind('desktop',now(),body.ready===true?1:0,JSON.stringify(modes)).run();
+      await database().prepare('INSERT INTO textbook_bridge (id,last_seen,ready,modes,conversation_ready) VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen, ready=excluded.ready, modes=excluded.modes, conversation_ready=excluded.conversation_ready').bind('desktop',now(),body.ready===true?1:0,JSON.stringify(modes),body.conversationReady===true?1:0).run();
       return json({ok:true});
     }
     if (body.action === 'claim') {
@@ -20,7 +21,8 @@ export async function POST(request: Request) {
       const answer = typeof body.answer === 'string' ? cleanAnswer(body.answer).slice(0,60000) : '';
       const error = typeof body.error === 'string' ? body.error.slice(0,300) : '';
       if (!answer && !error) return json({error:'Empty result'},400);
-      const changed = await database().prepare(COMPLETE_SQL).bind(answer?'done':'failed',answer||null,error||null,now(),Math.max(0,Math.min(240000,Number(body.elapsedMs)||0)),body.id,body.lease,now()-240).first();
+      const diagnostic=rewriteDiagnostic(body);
+      const changed = await database().prepare(COMPLETE_SQL).bind(answer?'done':'failed',answer||null,error||null,now(),Math.max(0,Math.min(240000,Number(body.elapsedMs)||0)),diagnostic.query,diagnostic.route,body.id,body.lease,now()-240).first();
       return json({ok:Boolean(changed)},changed?200:409);
     }
     return json({error:'Invalid action'},400);

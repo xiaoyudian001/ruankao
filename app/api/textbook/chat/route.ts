@@ -1,5 +1,6 @@
-import { bridgeState, database, expireJobs, json, now, owner, sameOrigin } from '../../../../lib/textbook/server';
+import { bridgeState, database, expireJobs, json, now, owner, sameOrigin, HISTORY_SQL } from '../../../../lib/textbook/server';
 import { validId, validQuestion, validRetrievalMode, sameJobRequest } from '../../../../lib/textbook/policy';
+import { historySnapshot } from '../../../../lib/textbook/conversation';
 
 export async function GET(request: Request) {
   try {
@@ -8,7 +9,7 @@ export async function GET(request: Request) {
     await expireJobs();
     const sessionId = new URL(request.url).searchParams.get('sessionId');
     const sessions = await database().prepare('SELECT id, title, updated_at FROM textbook_sessions WHERE owner_id=? ORDER BY updated_at DESC LIMIT 50').bind(user.userId).all();
-    const messages = sessionId && validId(sessionId) ? await database().prepare('SELECT id, question, status, answer, error, elapsed_ms, created_at, retrieval_mode FROM textbook_jobs WHERE owner_id=? AND session_id=? ORDER BY created_at,rowid LIMIT 200').bind(user.userId,sessionId).all() : {results:[]};
+    const messages = sessionId && validId(sessionId) ? await database().prepare('SELECT id, question, status, answer, error, elapsed_ms, created_at, retrieval_mode, retrieval_query, rewrite_route FROM textbook_jobs WHERE owner_id=? AND session_id=? ORDER BY created_at,rowid LIMIT 200').bind(user.userId,sessionId).all() : {results:[]};
     return json({sessions:sessions.results,messages:messages.results,...await bridgeState()});
   } catch (error) {
     console.error('textbook read', error instanceof Error ? error.name : 'error');
@@ -39,12 +40,14 @@ export async function POST(request: Request) {
     if (body.sessionId && !await database().prepare('SELECT id FROM textbook_sessions WHERE id=? AND owner_id=?').bind(sessionId,user.userId).first()) return json({error:'会话不存在。'},404);
     const count = await database().prepare('SELECT COUNT(*) AS count FROM textbook_jobs WHERE session_id=?').bind(sessionId).first<{count:number}>();
     if ((count?.count ?? 0)>=200) return json({error:'此会话已达到 200 条，请新建会话。'},409);
+    const history = connection.conversationReady && body.sessionId ? await database().prepare(HISTORY_SQL).bind(user.userId,sessionId).all<{question:string;answer:string}>() : {results:[]};
+    const snapshot=historySnapshot(history.results);
     // A single conditional INSERT is atomic, including pending limits and same-session exclusion.
     const result = await database().batch([
       database().prepare('INSERT OR IGNORE INTO textbook_sessions (id,owner_id,title,created_at,updated_at) VALUES (?,?,?,?,?)').bind(sessionId,user.userId,question.slice(0,32),now(),now()),
-      database().prepare(`INSERT OR IGNORE INTO textbook_jobs (id,session_id,owner_id,question,status,created_at,retrieval_mode)
-        SELECT ?,?,?,?,'queued',?,? WHERE (SELECT COUNT(*) FROM textbook_jobs WHERE status IN ('queued','running')) < 3
-        AND NOT EXISTS (SELECT 1 FROM textbook_jobs WHERE session_id=? AND status IN ('queued','running'))`).bind(body.requestId,sessionId,user.userId,question,now(),mode,sessionId),
+      database().prepare(`INSERT OR IGNORE INTO textbook_jobs (id,session_id,owner_id,question,status,created_at,retrieval_mode,history_json)
+        SELECT ?,?,?,?,'queued',?,?,? WHERE (SELECT COUNT(*) FROM textbook_jobs WHERE status IN ('queued','running')) < 3
+        AND NOT EXISTS (SELECT 1 FROM textbook_jobs WHERE session_id=? AND status IN ('queued','running'))`).bind(body.requestId,sessionId,user.userId,question,now(),mode,snapshot,sessionId),
       database().prepare('UPDATE textbook_sessions SET updated_at=? WHERE id=? AND owner_id=?').bind(now(),sessionId,user.userId),
     ]);
     if (!result[1].meta.changes) return json({error:'已有问题正在处理，请等待完成后再发送。'},409);
