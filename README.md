@@ -122,5 +122,13 @@ The portable build runs Vinext directly without a host `timeout` command. The ma
 
 ## Learn More
 
+## 教材复习闭环
+
+教材问答成功后点击“收藏答案”，进入 `/review` 制作可编辑的问答卡片。练习先隐藏参考答案，用户作答或选择想不起来后揭晓，再自评掌握程度。新卡今天到期；没记住和部分记住明天复习；连续记住按 1、3、7、14 天间隔安排。日期按 Asia/Shanghai 计算。
+
+收藏、卡片及练习记录存储于 D1，沿用教材问答的 owner 身份检查与同源写入。收藏快照由服务器复制，浏览器只提交原回答 id；练习提交使用请求 id 和卡片版本，防止重试重复计数。练习与每日打卡分别记录，原首页显示今日复习任务。查看已收藏内容和练习无需电脑在线；未缓存的原 PDF 页依赖原页服务。
+
+新增 schema-only 迁移 `drizzle/0005_safe_chameleon.sql`。验证：`node --experimental-strip-types --test tests/*.test.mjs`；`python -m unittest discover -s tests -p 'test_*.py'`。`node tests/review-local.mjs` 仅针对 localhost:5173 的 Sites 本地测试账号，需先创建本地测试问答样本；禁止改为线上网址。
+
 - [vinext Documentation](https://github.com/cloudflare/vinext)
 - [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)

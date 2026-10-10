@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, uniqueIndex, index } from "drizzle-orm/sqlite-core";
 
 export const checkins = sqliteTable("checkins", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -68,3 +68,20 @@ export const textbookPages = sqliteTable("textbook_pages", {
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
+
+export const textbookFavorites = sqliteTable('textbook_favorites', {
+  id:text('id').primaryKey(), ownerId:text('owner_id').notNull(), jobId:text('job_id').notNull(),
+  question:text('question').notNull(), retrievalQuery:text('retrieval_query'), answer:text('answer').notNull(),
+  referencesJson:text('references_json').notNull().default('[]'), createdAt:integer('created_at').notNull(),
+},t=>[uniqueIndex('favorites_owner_job').on(t.ownerId,t.jobId)]);
+export const textbookCards = sqliteTable('textbook_cards', {
+  id:text('id').primaryKey(),ownerId:text('owner_id').notNull(),favoriteId:text('favorite_id').notNull(),
+  front:text('front').notNull(),back:text('back').notNull(),dueDate:text('due_date').notNull(),
+  streak:integer('streak').notNull().default(0),version:integer('version').notNull().default(0),lastReviewId:text('last_review_id'),
+  createdAt:integer('created_at').notNull(),updatedAt:integer('updated_at').notNull(),
+},t=>[uniqueIndex('cards_owner_favorite').on(t.ownerId,t.favoriteId),index('cards_owner_due').on(t.ownerId,t.dueDate)]);
+export const textbookReviews = sqliteTable('textbook_reviews', {
+  id:text('id').primaryKey(),cardId:text('card_id').notNull(),ownerId:text('owner_id').notNull(),
+  grade:text('grade').notNull(),response:text('response').notNull(),studyDate:text('study_date').notNull(),
+  dueDate:text('due_date').notNull(),cardVersion:integer('card_version').notNull(),createdAt:integer('created_at').notNull(),
+},t=>[index('reviews_owner_day').on(t.ownerId,t.studyDate),uniqueIndex('reviews_card_version').on(t.cardId,t.cardVersion)]);
