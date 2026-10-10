@@ -13,10 +13,11 @@ class QueueTest(unittest.TestCase):
         self.db.execute("ALTER TABLE textbook_jobs ADD retrieval_mode TEXT NOT NULL DEFAULT 'default'")
         self.db.execute("UPDATE textbook_jobs SET retrieval_mode='complete' WHERE id='two'")
         self.db.executescript("ALTER TABLE textbook_jobs ADD history_json TEXT NOT NULL DEFAULT '[]'; ALTER TABLE textbook_jobs ADD retrieval_query TEXT; ALTER TABLE textbook_jobs ADD rewrite_route TEXT; ALTER TABLE textbook_jobs ADD owner_id TEXT;")
+        self.db.execute("ALTER TABLE textbook_jobs ADD references_json TEXT NOT NULL DEFAULT '[]'")
     def test_one_running_and_reject_wrong_or_expired_completion(self):
         self.assertEqual(self.db.execute(self.claim,('lease-1',20)).fetchone()[0],'one')
         self.assertIsNone(self.db.execute(self.claim,('lease-2',21)).fetchone())
-        args=['done','answer',None,22,2000,'MTBF','direct','one','wrong',0]
+        args=['done','answer',None,22,2000,'MTBF','direct','[]','one','wrong',0]
         self.assertIsNone(self.db.execute(self.complete,args).fetchone())
         args[-2]='lease-1';args[-1]=21
         self.assertIsNone(self.db.execute(self.complete,args).fetchone())
@@ -55,6 +56,22 @@ class QueueTest(unittest.TestCase):
         db.executescript(sql)
         self.assertEqual(db.execute('SELECT retrieval_mode FROM textbook_jobs').fetchone()[0],'default')
         self.assertEqual(db.execute('SELECT modes FROM textbook_bridge').fetchone()[0],'["default"]')
+        db.close()
+
+    def test_page_lease_rejects_stale_upload_and_deduplicates_claim(self):
+        db=sqlite3.connect(':memory:')
+        db.executescript('CREATE TABLE textbook_jobs(id TEXT); CREATE TABLE textbook_bridge(id TEXT);')
+        db.executescript((Path(__file__).parents[1]/'drizzle/0004_good_wind_dancer.sql').read_text(encoding='utf-8'))
+        code=(Path(__file__).parents[1]/'lib/textbook/sources.ts').read_text(encoding='utf-8')
+        claim=re.search(r'PAGE_CLAIM_SQL=`(.+?)`',code,re.S)[1]
+        finish=re.search(r'PAGE_FINISH_SQL=`(.+?)`',code,re.S)[1]
+        db.executemany("INSERT INTO textbook_pages(page,status,created_at,updated_at) VALUES(?,'queued',10,10)",[(323,),(324,)])
+        self.assertEqual(db.execute(claim,('a',20)).fetchone(),(323,'a'))
+        self.assertIsNone(db.execute(claim,('b',21)).fetchone())
+        self.assertIsNone(db.execute(finish,('key',22,323,'b',0)).fetchone())
+        self.assertIsNone(db.execute(finish,('key',22,323,'a',21)).fetchone())
+        self.assertEqual(db.execute(finish,('key',22,323,'a',0)).fetchone(),(323,))
+        self.assertEqual(db.execute(claim,('b',23)).fetchone(),(324,'b'))
         db.close()
     def tearDown(self): self.db.close()
 

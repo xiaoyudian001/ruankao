@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import { getChatGPTUser } from '../../app/chatgpt-auth';
 import { bridgeAuthorized, bridgeOnline, availableRetrievalModes, isOwner } from './policy';
 
-type Runtime = { DB?: D1Database; RAG_BRIDGE_SECRET?: string; RAG_OWNER_EMAIL?: string; RAG_SITE_ORIGIN?: string };
+type Runtime = { DB?: D1Database; BUCKET?:R2Bucket; RAG_BRIDGE_SECRET?: string; RAG_OWNER_EMAIL?: string; RAG_SITE_ORIGIN?: string };
 export const runtime = () => env as unknown as Runtime;
 export const now = () => Math.floor(Date.now() / 1000);
 export function database(): D1Database {
@@ -21,8 +21,8 @@ export function sameOrigin(request: Request): boolean {
 }
 export const bridgeAuth = (request: Request) => bridgeAuthorized(request.headers.get('authorization'), runtime().RAG_BRIDGE_SECRET ?? '');
 export async function bridgeState() {
-  const state = await database().prepare('SELECT last_seen, ready, modes, conversation_ready FROM textbook_bridge WHERE id = ?').bind('desktop').first<{ last_seen: number; ready: number; modes:string;conversation_ready:number }>();
-  return { online: bridgeOnline(state, now()), availableModes:availableRetrievalModes(state,now()),conversationReady:bridgeOnline(state,now())&&state?.conversation_ready===1 };
+  const state = await database().prepare('SELECT last_seen, ready, modes, conversation_ready, sources_ready FROM textbook_bridge WHERE id = ?').bind('desktop').first<{ last_seen: number; ready: number; modes:string;conversation_ready:number;sources_ready:number }>();
+  return { online: bridgeOnline(state, now()), availableModes:availableRetrievalModes(state,now()),conversationReady:bridgeOnline(state,now())&&state?.conversation_ready===1,sourcesReady:bridgeOnline(state,now())&&state?.sources_ready===1 };
 }
 export async function expireJobs() {
   await database().batch([
@@ -36,7 +36,7 @@ WHERE id = (SELECT id FROM textbook_jobs WHERE status='queued' ORDER BY created_
 AND status='queued' AND NOT EXISTS (SELECT 1 FROM textbook_jobs WHERE status='running')
 RETURNING id, question, session_id, lease, retrieval_mode, history_json`;
 
-export const COMPLETE_SQL = `UPDATE textbook_jobs SET status=?, answer=?, error=?, completed_at=?, elapsed_ms=?, retrieval_query=?, rewrite_route=?, lease=NULL
+export const COMPLETE_SQL = `UPDATE textbook_jobs SET status=?, answer=?, error=?, completed_at=?, elapsed_ms=?, retrieval_query=?, rewrite_route=?, references_json=?, lease=NULL
 WHERE id=? AND status='running' AND lease=? AND leased_at >= ? RETURNING id`;
 
 export const HISTORY_SQL = `SELECT question,answer FROM textbook_jobs

@@ -39,6 +39,7 @@ export const textbookJobs = sqliteTable("textbook_jobs", {
   historyJson: text("history_json").notNull().default("[]"),
   retrievalQuery: text("retrieval_query"),
   rewriteRoute: text("rewrite_route"),
+  referencesJson: text("references_json").notNull().default("[]"),
   status: text("status").notNull().default("queued"),
   answer: text("answer"),
   error: text("error"),
@@ -55,4 +56,15 @@ export const textbookBridge = sqliteTable("textbook_bridge", {
   ready: integer("ready").notNull().default(0),
   modes: text("modes").notNull().default('["default"]'),
   conversationReady: integer("conversation_ready").notNull().default(0),
+  sourcesReady: integer("sources_ready").notNull().default(0),
+});
+
+export const textbookPages = sqliteTable("textbook_pages", {
+  page: integer("page").primaryKey(),
+  status: text("status").notNull().default("queued"),
+  fileKey: text("file_key"),
+  error: text("error"),
+  lease: text("lease"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
 });

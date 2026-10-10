@@ -1,6 +1,7 @@
 import { bridgeState, database, expireJobs, json, now, owner, sameOrigin, HISTORY_SQL } from '../../../../lib/textbook/server';
 import { validId, validQuestion, validRetrievalMode, sameJobRequest } from '../../../../lib/textbook/policy';
 import { historySnapshot } from '../../../../lib/textbook/conversation';
+import { sourceSummaries } from '../../../../lib/textbook/sources';
 
 export async function GET(request: Request) {
   try {
@@ -9,8 +10,9 @@ export async function GET(request: Request) {
     await expireJobs();
     const sessionId = new URL(request.url).searchParams.get('sessionId');
     const sessions = await database().prepare('SELECT id, title, updated_at FROM textbook_sessions WHERE owner_id=? ORDER BY updated_at DESC LIMIT 50').bind(user.userId).all();
-    const messages = sessionId && validId(sessionId) ? await database().prepare('SELECT id, question, status, answer, error, elapsed_ms, created_at, retrieval_mode, retrieval_query, rewrite_route FROM textbook_jobs WHERE owner_id=? AND session_id=? ORDER BY created_at,rowid LIMIT 200').bind(user.userId,sessionId).all() : {results:[]};
-    return json({sessions:sessions.results,messages:messages.results,...await bridgeState()});
+    const messages = sessionId && validId(sessionId) ? await database().prepare('SELECT id, question, status, answer, error, elapsed_ms, created_at, retrieval_mode, retrieval_query, rewrite_route, references_json FROM textbook_jobs WHERE owner_id=? AND session_id=? ORDER BY created_at,rowid LIMIT 200').bind(user.userId,sessionId).all() : {results:[]};
+    const summaries=messages.results.map(row=>{const {references_json,...message}=row;return {...message,references:sourceSummaries(references_json)};});
+    return json({sessions:sessions.results,messages:summaries,...await bridgeState()});
   } catch (error) {
     console.error('textbook read', error instanceof Error ? error.name : 'error');
     return json({error:'会话暂时无法读取，请稍后重试。'},503);
