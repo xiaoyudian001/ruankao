@@ -57,6 +57,7 @@ export const textbookBridge = sqliteTable("textbook_bridge", {
   modes: text("modes").notNull().default('["default"]'),
   conversationReady: integer("conversation_ready").notNull().default(0),
   sourcesReady: integer("sources_ready").notNull().default(0),
+  critiqueReady: integer("critique_ready").notNull().default(0),
 });
 
 export const textbookPages = sqliteTable("textbook_pages", {
@@ -84,4 +85,12 @@ export const textbookReviews = sqliteTable('textbook_reviews', {
   id:text('id').primaryKey(),cardId:text('card_id').notNull(),ownerId:text('owner_id').notNull(),
   grade:text('grade').notNull(),response:text('response').notNull(),studyDate:text('study_date').notNull(),
   dueDate:text('due_date').notNull(),cardVersion:integer('card_version').notNull(),createdAt:integer('created_at').notNull(),
+  critiqueId:text('critique_id'),
 },t=>[index('reviews_owner_day').on(t.ownerId,t.studyDate),uniqueIndex('reviews_card_version').on(t.cardId,t.cardVersion)]);
+
+export const textbookCritiques=sqliteTable('textbook_critiques',{
+ id:text('id').primaryKey(),ownerId:text('owner_id').notNull(),cardId:text('card_id').notNull(),cardVersion:integer('card_version').notNull(),
+ jobId:text('job_id').notNull(),front:text('front').notNull(),back:text('back').notNull(),response:text('response').notNull(),referencesJson:text('references_json').notNull(),
+ status:text('status').notNull().default('queued'),resultJson:text('result_json'),error:text('error'),lease:text('lease'),leasedAt:integer('leased_at'),
+ createdAt:integer('created_at').notNull(),completedAt:integer('completed_at'),
+},t=>[index('critiques_owner_card').on(t.ownerId,t.cardId),index('critiques_status').on(t.status,t.createdAt)]);

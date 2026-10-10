@@ -3,6 +3,7 @@ import {validId} from '../../../../lib/textbook/policy';
 import {sourceSummaries} from '../../../../lib/textbook/sources';
 import {cardText,scheduleReview,studyDate} from '../../../../lib/review/model';
 import {REVIEW_INSERT_SQL,REVIEW_UPDATE_SQL} from '../../../../lib/review/store';
+import {critiqueSummary,expireCritiques} from '../../../../lib/review/critique-server';
 
 export async function GET(request:Request){
   try{
@@ -17,14 +18,18 @@ export async function GET(request:Request){
         db.prepare('SELECT COUNT(DISTINCT card_id) AS done FROM textbook_reviews WHERE owner_id=? AND study_date=?').bind(user.userId,today).first(),
       ]);return json({...cards,...reviews,today});
     }
+    await expireCritiques();
     const [favorites,cards,reviews,stats]=await Promise.all([
       db.prepare('SELECT * FROM textbook_favorites WHERE owner_id=? ORDER BY created_at DESC,rowid DESC LIMIT 200').bind(user.userId).all(),
       db.prepare('SELECT c.*,f.job_id,f.references_json FROM textbook_cards c JOIN textbook_favorites f ON f.id=c.favorite_id AND f.owner_id=c.owner_id WHERE c.owner_id=? ORDER BY c.due_date,c.created_at LIMIT 200').bind(user.userId).all(),
-      db.prepare('SELECT id,card_id,grade,response,study_date,due_date,created_at FROM textbook_reviews WHERE owner_id=? ORDER BY created_at DESC,rowid DESC LIMIT 2000').bind(user.userId).all(),
+      db.prepare(`SELECT r.id,r.card_id,r.grade,r.response,r.study_date,r.due_date,r.created_at,q.id AS critique_id,q.status,q.result_json,q.error,q.references_json
+        FROM textbook_reviews r LEFT JOIN textbook_critiques q ON q.id=r.critique_id AND q.owner_id=r.owner_id
+        WHERE r.owner_id=? ORDER BY r.created_at DESC,r.rowid DESC LIMIT 2000`).bind(user.userId).all(),
       db.prepare('SELECT study_date,COUNT(DISTINCT card_id) AS cards,COUNT(*) AS attempts FROM textbook_reviews WHERE owner_id=? GROUP BY study_date').bind(user.userId).all(),
     ]);
     const summarize=(r:Record<string,unknown>)=>{const {owner_id,references_json,last_review_id,...data}=r;return {...data,references:sourceSummaries(references_json)};};
-    return json({favorites:favorites.results.map(summarize),cards:cards.results.map(summarize),reviews:reviews.results,stats:stats.results,today});
+    const events=reviews.results.map(r=>{const {critique_id,status,result_json,error,references_json,...event}=r;return {...event,critique:critique_id?critiqueSummary({id:critique_id,status,result_json,error,references_json}):null};});
+    return json({favorites:favorites.results.map(summarize),cards:cards.results.map(summarize),reviews:events,stats:stats.results,today});
   }catch{return json({error:'复习内容暂时无法读取，请重试。'},503);}
 }
 
@@ -63,17 +68,20 @@ export async function POST(request:Request){
       if(!validId(b.cardId)||!validId(b.requestId)||!Number.isInteger(b.version)||Number(b.version)<0)return json({error:'练习标识或版本无效。'},400);
       if(typeof b.response!=='string'||b.response.length>5000)return json({error:'回忆内容最多 5000 字。'},400);
       scheduleReview(0,b.grade); // Validate grade before either first write or retry.
-      type Event={id:string;card_id:string;grade:string;response:string;card_version:number;due_date:string};
+      if(b.critiqueId!=null&&!validId(b.critiqueId))return json({error:'点评标识无效。'},400);
+      type Event={id:string;card_id:string;grade:string;response:string;card_version:number;due_date:string;critique_id:string|null};
       const previous=await db.prepare('SELECT * FROM textbook_reviews WHERE id=? AND owner_id=?').bind(b.requestId,ownerId).first<Event>();
-      const matches=(e:Event)=>e.card_id===b.cardId&&e.grade===b.grade&&e.response===b.response&&e.card_version===Number(b.version)+1;
+      const matches=(e:Event)=>e.card_id===b.cardId&&e.grade===b.grade&&e.response===b.response&&e.card_version===Number(b.version)+1&&e.critique_id===(b.critiqueId??null);
       if(previous)return matches(previous)?json({review:previous}):json({error:'请求标识已用于其他练习。'},409);
       const card=await db.prepare('SELECT streak,version FROM textbook_cards WHERE id=? AND owner_id=?').bind(b.cardId,ownerId).first<{streak:number;version:number}>();
       if(!card)return json({error:'卡片不存在。'},404);
       if(card.version!==b.version)return json({error:'卡片已在其他窗口更新，请刷新后重试。'},409);
+      if(b.critiqueId){const q=await db.prepare('SELECT id FROM textbook_critiques WHERE id=? AND owner_id=? AND card_id=? AND card_version=? AND response=?').bind(b.critiqueId,ownerId,b.cardId,b.version,b.response).first();if(!q)return json({error:'点评与本次回忆不匹配。'},409);}
       const today=studyDate(),next=scheduleReview(card.streak,b.grade,today);
       await db.batch([
         db.prepare(REVIEW_UPDATE_SQL).bind(next.streak,next.dueDate,b.requestId,timestamp,b.cardId,ownerId,b.version,b.requestId),
         db.prepare(REVIEW_INSERT_SQL).bind(b.requestId,b.grade,b.response,today,next.dueDate,Number(b.version)+1,timestamp,b.cardId,ownerId,b.requestId,Number(b.version)+1),
+        db.prepare('UPDATE textbook_reviews SET critique_id=? WHERE id=? AND owner_id=? AND critique_id IS NULL').bind(b.critiqueId??null,b.requestId,ownerId),
       ]);
       const event=await db.prepare('SELECT * FROM textbook_reviews WHERE id=? AND owner_id=?').bind(b.requestId,ownerId).first<Event>();
       return event&&matches(event)?json({review:event}):json({error:'这张卡片刚刚已被更新，请刷新后再练。'},409);

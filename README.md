@@ -130,5 +130,15 @@ The portable build runs Vinext directly without a host `timeout` command. The ma
 
 新增 schema-only 迁移 `drizzle/0005_safe_chameleon.sql`。验证：`node --experimental-strip-types --test tests/*.test.mjs`；`python -m unittest discover -s tests -p 'test_*.py'`。`node tests/review-local.mjs` 仅针对 localhost:5173 的 Sites 本地测试账号，需先创建本地测试问答样本；禁止改为线上网址。
 
+## AI 回忆点评
+
+揭晓参考答案后可点“点评我的回忆”。服务器复制本人卡片与原收藏教材证据，经 outbound bridge 调用本机独立 Langflow「教材主动回忆 · AI点评」，使用既有 MiniMax-M3 配置、温度 0.1。不是 ChatGPT 判分；不经过原检索链重复查库。事实依据为原教材片段，卡片背面可编辑，仅作辅助。无证据的卡片不提供 AI 点评。
+
+结果包含已答对、遗漏、需要纠正、练习建议与蓝色片段引用。结果保存到 D1，自评记录关联本次点评；自评仍决定 1/3/7/14 天间隔，AI 不自动改变排期。点评排队期间可先自评，结果稍后在计划练习记录中查看；提交任务的短时间内暂停评分避免丢失关联。离线或模型失败不影响自评。
+
+追加迁移 `drizzle/0006_friendly_arachne.sql`，不改旧迁移。桥接新增 `critiqueReady`、`critiqueClaim`、`critiqueComplete`，领取与问答互斥，严格引用校验与 180 秒租约。`F:/daily/textbook-bridge/setup_critique_flow.py` 创建专用模型流程，`verify_critique.py` 验证本机真实调用，不上传测试练习到生产。
+
+点评接口验证：`node --experimental-strip-types --experimental-sqlite tests/critique-routes.mjs`，执行实际接口处理函数，用独立内存 SQLite 校验身份、快照、引用、租约、幂等与自评关联。`docs/local-connector/` 保存本次本机连接程序源码，不含 `config.json`、密钥或学习记录。问答与点评 JSON 跨 Langflow 字符串层使用版本化 Base64 编码，完整保留转义字符。
+
 - [vinext Documentation](https://github.com/cloudflare/vinext)
 - [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)

@@ -43,6 +43,13 @@
       "when": 1791624218810,
       "tag": "0005_safe_chameleon",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791642931941,
+      "tag": "0006_friendly_arachne",
+      "breakpoints": true
     }
   ]
 }

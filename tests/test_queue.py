@@ -14,6 +14,7 @@ class QueueTest(unittest.TestCase):
         self.db.execute("UPDATE textbook_jobs SET retrieval_mode='complete' WHERE id='two'")
         self.db.executescript("ALTER TABLE textbook_jobs ADD history_json TEXT NOT NULL DEFAULT '[]'; ALTER TABLE textbook_jobs ADD retrieval_query TEXT; ALTER TABLE textbook_jobs ADD rewrite_route TEXT; ALTER TABLE textbook_jobs ADD owner_id TEXT;")
         self.db.execute("ALTER TABLE textbook_jobs ADD references_json TEXT NOT NULL DEFAULT '[]'")
+        self.db.execute('CREATE TABLE textbook_critiques(id TEXT,status TEXT)')
     def test_one_running_and_reject_wrong_or_expired_completion(self):
         self.assertEqual(self.db.execute(self.claim,('lease-1',20)).fetchone()[0],'one')
         self.assertIsNone(self.db.execute(self.claim,('lease-2',21)).fetchone())

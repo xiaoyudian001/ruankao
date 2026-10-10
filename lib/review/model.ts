@@ -1,10 +1,11 @@
 import type {SourceSummary} from '../textbook/sources';
+import type {CritiqueJob} from './critique';
 
 export type Grade='forgotten'|'partial'|'remembered';
 export const GRADES:Record<Grade,string>={forgotten:'没记住',partial:'部分记住',remembered:'已记住'};
 export type Favorite={id:string;job_id:string;question:string;retrieval_query:string|null;answer:string;created_at:number;references:SourceSummary[]};
 export type ReviewCard={id:string;favorite_id:string;front:string;back:string;due_date:string;streak:number;version:number;job_id:string;references:SourceSummary[]};
-export type ReviewRecord={id:string;card_id:string;grade:Grade;study_date:string;due_date:string;response:string;created_at:number};
+export type ReviewRecord={id:string;card_id:string;grade:Grade;study_date:string;due_date:string;response:string;created_at:number;critique?:CritiqueJob|null};
 export type ReviewData={favorites:Favorite[];cards:ReviewCard[];reviews:ReviewRecord[];today:string;stats:{study_date:string;cards:number;attempts:number}[]};
 
 export function studyDate(date=new Date()):string {

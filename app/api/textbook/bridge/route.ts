@@ -2,6 +2,9 @@ import { bridgeAuth, CLAIM_SQL, COMPLETE_SQL, database, expireJobs, json, now } 
 import { cleanAnswer, validId, RETRIEVAL_MODES } from '../../../../lib/textbook/policy';
 import { rewriteDiagnostic } from '../../../../lib/textbook/conversation';
 import {references,PAGE_CLAIM_SQL} from '../../../../lib/textbook/sources';
+import {storedReferences} from '../../../../lib/textbook/sources';
+import {CRITIQUE_CLAIM_SQL,CRITIQUE_COMPLETE_SQL,expireCritiques} from '../../../../lib/review/critique-server';
+import {validateCritique} from '../../../../lib/review/critique';
 
 export async function POST(request: Request) {
   if (!bridgeAuth(request)) return json({error:'Unauthorized'},401);
@@ -10,13 +13,26 @@ export async function POST(request: Request) {
     const body = await request.json() as Record<string,unknown>;
     if (body.action === 'heartbeat') {
       const modes=Array.isArray(body.modes)?Object.keys(RETRIEVAL_MODES).filter(mode=>(body.modes as unknown[]).includes(mode)):['default'];
-      await database().prepare('INSERT INTO textbook_bridge (id,last_seen,ready,modes,conversation_ready,sources_ready) VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen, ready=excluded.ready, modes=excluded.modes, conversation_ready=excluded.conversation_ready, sources_ready=excluded.sources_ready').bind('desktop',now(),body.ready===true?1:0,JSON.stringify(modes),body.conversationReady===true?1:0,body.sourcesReady===true?1:0).run();
+      await database().prepare('INSERT INTO textbook_bridge (id,last_seen,ready,modes,conversation_ready,sources_ready,critique_ready) VALUES (?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen, ready=excluded.ready, modes=excluded.modes, conversation_ready=excluded.conversation_ready, sources_ready=excluded.sources_ready,critique_ready=excluded.critique_ready').bind('desktop',now(),body.ready===true?1:0,JSON.stringify(modes),body.conversationReady===true?1:0,body.sourcesReady===true?1:0,body.critiqueReady===true?1:0).run();
       return json({ok:true});
     }
     if (body.action === 'claim') {
       await expireJobs();
+      await expireCritiques();
       const job = await database().prepare(CLAIM_SQL).bind(crypto.randomUUID(),now()).first();
       return json({job});
+    }
+    if(body.action==='critiqueClaim'){
+      await expireJobs();await expireCritiques();
+      const critique=await database().prepare(CRITIQUE_CLAIM_SQL).bind(crypto.randomUUID(),now()).first();return json({critique});
+    }
+    if(body.action==='critiqueComplete'&&validId(body.id)&&validId(body.lease)){
+      const db=database();const job=await db.prepare("SELECT references_json FROM textbook_critiques WHERE id=? AND status='running' AND lease=? AND leased_at>=?").bind(body.id,body.lease,now()-180).first();
+      if(!job)return json({error:'Late result'},409);
+      let result=null,error=null;
+      if(body.result!=null){try{result=validateCritique(body.result,storedReferences(job.references_json).map(r=>r.rank));}catch{return json({error:'Invalid critique result'},400);}}
+      else error='AI 点评执行失败或超时，请稍后重试。你仍可继续自评。';
+      const changed=await db.prepare(CRITIQUE_COMPLETE_SQL).bind(result?'done':'failed',result?JSON.stringify(result):null,error,now(),body.id,body.lease,now()-180).first();return json({ok:Boolean(changed)},changed?200:409);
     }
     if (body.action==='pageClaim') {
       await database().prepare("UPDATE textbook_pages SET status='failed',error=?,lease=NULL,updated_at=? WHERE status IN ('queued','running') AND updated_at<?").bind('页面准备超时，请重试。',now(),now()-90).run();
