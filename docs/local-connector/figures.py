@@ -1,5 +1,5 @@
 """Trusted textbook figure retrieval and bounded multimodal answer contract."""
-import base64,hashlib,json,re,sys,logging
+import base64,hashlib,json,re,sys,logging,time
 from functools import lru_cache
 from pathlib import Path
 ROOT=Path(__file__).resolve().parent.parent
@@ -22,6 +22,14 @@ def load_catalog():
 def figure_number(text):return re.findall(r'图\s*(\d+)\s*[-－—]\s*(\d+)(?!\d)',text)
 
 def select_figures(query,refs,catalog,limit=2):
+ if not figure_number(query):
+  try:
+   from figure_hybrid import select_hybrid
+   return select_hybrid(query,refs,catalog,limit)
+  except Exception as error:logging.info('Figure hybrid fallback: %s',type(error).__name__)
+ return select_caption_figures(query,refs,catalog,limit)
+
+def select_caption_figures(query,refs,catalog,limit=2):
  if not query.strip() or not catalog:return []
  visual_query=re.sub(r'架构设计师|架构师','',query)
  if not re.search(r'图|表|架构|结构|模型|流程|拓扑|生命周期|网络|协议',visual_query,re.I):return []
@@ -102,9 +110,9 @@ def visual_text(output):
    if isinstance(v,str) and v.strip():return v
  raise ValueError('Empty visual answer')
 
-def enrich_answer(local,job,result,timeout=105):
+def enrich_answer(local,job,result,timeout=105,selected=None):
  if result.get('rewriteRoute')=='clarification':return result
- selected=select_figures(result.get('retrievalQuery') or job['question'],result.get('references',[]),load_catalog())
+ if selected is None:selected=select_figures(result.get('retrievalQuery') or job['question'],result.get('references',[]),load_catalog())
  if not selected:return result
  state=json.loads((Path(__file__).parent/'figure-flow.json').read_text(encoding='utf-8'))
  # Keep the highest ranked text evidence and reserve at most two trusted figure ranks.
@@ -125,10 +133,13 @@ def enrich_answer(local,job,result,timeout=105):
 def try_enrich_answer(local,job,result,remaining_seconds):
  if result.get('rewriteRoute')=='clarification':return result
  try:
+  start=time.monotonic()
+  if remaining_seconds<20:return result
   selected=select_figures(result.get('retrievalQuery') or job['question'],result.get('references',[]),load_catalog())
   if not selected:return result
+  remaining_seconds-=time.monotonic()-start
   if remaining_seconds<20:raise TimeoutError('Insufficient visual budget')
-  return enrich_answer(local,job,result,timeout=min(105,remaining_seconds))
+  return enrich_answer(local,job,result,timeout=min(105,remaining_seconds),selected=selected)
  except Exception as error:
   logging.info('Figure enrichment unavailable: %s',type(error).__name__)
   return {**result,'answer':result['answer']+'\n\n> 本次原图解析未完成，以上为正文检索答案；图中细节请对照原页或稍后重试。'}
