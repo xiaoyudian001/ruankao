@@ -138,12 +138,16 @@ def main():
     try:msvcrt.locking(lock.fileno(),msvcrt.LK_NBLCK,1)
     except OSError:return
     headers={'Authorization':'Bearer '+config['secret']}
-    stop=threading.Event();ready=threading.Event();sources_ready=threading.Event();critique_ready=threading.Event();figures_ready=threading.Event();local=LocalFlow()
+    stop=threading.Event();ready=threading.Event();sources_ready=threading.Event();critique_ready=threading.Event();figures_ready=threading.Event();structured_ready=threading.Event();local=LocalFlow()
     def warm_figures():
         try:
             from figure_hybrid import warmup
             warmup();figures_ready.set();logging.info('Figure hybrid index and offline reranker ready')
         except Exception as error:logging.info('Figure hybrid warmup unavailable: %s',type(error).__name__)
+        try:
+            from structured import load_catalog,load_index
+            load_catalog();load_index();structured_ready.set();logging.info('Structured table/formula index ready')
+        except Exception as error:logging.info('Structured index warmup unavailable: %s',type(error).__name__)
     threading.Thread(target=warm_figures,daemon=True).start()
     def cloud(body):return request_json(site+'/api/textbook/bridge',body,headers,timeout=20)
     def page_worker():
@@ -196,7 +200,7 @@ def main():
             try:
                 conversational=available and local.conversation_ready()
                 cloud({'action':'heartbeat','ready':available,'modes':modes,'conversationReady':conversational,'sourcesReady':sources_ready.is_set(),'critiqueReady':critique_available})
-                (ROOT/'status.json').write_text(json.dumps({'updated_at':int(time.time()),'local_ready':available,'connected':True,'modes':modes,'conversation_ready':conversational,'sources_ready':sources_ready.is_set(),'critique_ready':critique_available,'figure_hybrid_ready':figures_ready.is_set()}),encoding='utf-8')
+                (ROOT/'status.json').write_text(json.dumps({'updated_at':int(time.time()),'local_ready':available,'connected':True,'modes':modes,'conversation_ready':conversational,'sources_ready':sources_ready.is_set(),'critique_ready':critique_available,'figure_hybrid_ready':figures_ready.is_set(),'structured_ready':structured_ready.is_set()}),encoding='utf-8')
             except Exception as error:
                 logging.info('Heartbeat unavailable: %s HTTP=%s',type(error).__name__,getattr(error,'code','n/a'))
                 (ROOT/'status.json').write_text(json.dumps({'updated_at':int(time.time()),'local_ready':available,'connected':False}),encoding='utf-8')

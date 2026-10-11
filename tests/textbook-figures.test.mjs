@@ -11,3 +11,13 @@ test('reject figures outside source page and invalid crop bounds',()=>{
  for(const wrong of [{...figure,pdfPage:428},{...figure,bbox:[.9,.2,.8,.3]},{...figure,bbox:[0,0,0,1]},{...figure,id:'local/path.png'},{...figure,pageSize:[0,700]}])assert.throws(()=>references([{...ref,figures:[wrong]}]));
  assert.throws(()=>references([{...ref,figures:[figure,figure]}]));
 });
+
+test('table and formula source kinds survive validated summaries',()=>{
+ for(const kind of ['table','formula','figure']){
+  const item={...figure,kind};assert.equal(sourceSummaries([{...ref,figures:[item]}])[0].figures[0].kind,kind);
+ }
+});
+
+test('reject unrecognized visual source kind',()=>{
+ assert.throws(()=>references([{...ref,figures:[{...figure,kind:'external-image'}]}]));
+});
