@@ -5,6 +5,7 @@ import {references,PAGE_CLAIM_SQL} from '../../../../lib/textbook/sources';
 import {storedReferences} from '../../../../lib/textbook/sources';
 import {CRITIQUE_CLAIM_SQL,CRITIQUE_COMPLETE_SQL,expireCritiques} from '../../../../lib/review/critique-server';
 import {validateCritique} from '../../../../lib/review/critique';
+import {validatePractice} from '../../../../lib/textbook/exam';
 
 export async function POST(request: Request) {
   if (!bridgeAuth(request)) return json({error:'Unauthorized'},401);
@@ -13,7 +14,7 @@ export async function POST(request: Request) {
     const body = await request.json() as Record<string,unknown>;
     if (body.action === 'heartbeat') {
       const modes=Array.isArray(body.modes)?Object.keys(RETRIEVAL_MODES).filter(mode=>(body.modes as unknown[]).includes(mode)):['default'];
-      await database().prepare('INSERT INTO textbook_bridge (id,last_seen,ready,modes,conversation_ready,sources_ready,critique_ready) VALUES (?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen, ready=excluded.ready, modes=excluded.modes, conversation_ready=excluded.conversation_ready, sources_ready=excluded.sources_ready,critique_ready=excluded.critique_ready').bind('desktop',now(),body.ready===true?1:0,JSON.stringify(modes),body.conversationReady===true?1:0,body.sourcesReady===true?1:0,body.critiqueReady===true?1:0).run();
+      await database().prepare('INSERT INTO textbook_bridge (id,last_seen,ready,modes,conversation_ready,sources_ready,critique_ready,exam_ready) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen, ready=excluded.ready, modes=excluded.modes, conversation_ready=excluded.conversation_ready, sources_ready=excluded.sources_ready,critique_ready=excluded.critique_ready,exam_ready=excluded.exam_ready').bind('desktop',now(),body.ready===true?1:0,JSON.stringify(modes),body.conversationReady===true?1:0,body.sourcesReady===true?1:0,body.critiqueReady===true?1:0,body.examReady===true?1:0).run();
       return json({ok:true});
     }
     if (body.action === 'claim') {
@@ -49,7 +50,11 @@ export async function POST(request: Request) {
       if (!answer && !error) return json({error:'Empty result'},400);
       const diagnostic=rewriteDiagnostic(body);
       const refs=references(body.references);
-      const changed = await database().prepare(COMPLETE_SQL).bind(answer?'done':'failed',answer||null,error||null,now(),Math.max(0,Math.min(240000,Number(body.elapsedMs)||0)),diagnostic.query,diagnostic.route,JSON.stringify(refs),body.id,body.lease,now()-240).first();
+      const job=await database().prepare("SELECT task_type FROM textbook_jobs WHERE id=? AND status='running' AND lease=? AND leased_at>=?").bind(body.id,body.lease,now()-240).first<{task_type:string}>();
+      if(!job)return json({error:'Late result'},409);
+      let practice=null;
+      try{if(answer&&job.task_type==='exam')practice=validatePractice(body.practice,refs.map(r=>r.rank));else if(body.practice!=null)return json({error:'Unexpected practice'},400);}catch{return json({error:'Invalid practice'},400);}
+      const changed = await database().prepare(COMPLETE_SQL).bind(answer?'done':'failed',answer||null,error||null,now(),Math.max(0,Math.min(240000,Number(body.elapsedMs)||0)),diagnostic.query,diagnostic.route,JSON.stringify(refs),practice?JSON.stringify(practice):null,body.id,body.lease,now()-240).first();
       return json({ok:Boolean(changed)},changed?200:409);
     }
     return json({error:'Invalid action'},400);

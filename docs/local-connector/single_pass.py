@@ -7,6 +7,12 @@ from answer_citations import normalize_citations
 
 WARNING='\n\n> 本次原页解析未完成，以上为正文检索答案；图中细节请对照原页或稍后重试。'
 
+def exam_needs_visual(question):
+ from figure_hybrid import needs_hybrid
+ from structured import question_kinds
+ stem=re.split(r'(?:^|\s)[A-D]\s*[.．、:：)]',question,maxsplit=1)[0]
+ return needs_hybrid(stem) or bool(question_kinds(stem))
+
 def focus_calculation(query,selected,refs):
  # A single numerical calculation uses its top original, avoiding an unrelated
  # chapter's alternative variable convention. Explicit comparisons keep both.
@@ -37,13 +43,15 @@ def run_single_pass(local,job,budget=220):
   seconds=budget-(time.monotonic()-start)
   if seconds<1:raise TimeoutError('Answer budget exhausted')
   return seconds
- plan=measured('questionMs',lambda:local.prepare_conversation(job))
+ is_exam=job.get('task_type','qa')=='exam'
+ plan={'query':re.sub(r'[\r\n]+',' ',job['question']).replace('<','＜').replace('>','＞'),'route':'direct','history':[]} if is_exam else measured('questionMs',lambda:local.prepare_conversation(job))
  if plan['route']=='clarification':
   result={'answer':CLARIFY,'references':[]}
  else:
   snapshot=measured('textRetrievalMs',lambda:local.retrieve_evidence(job,plan,timeout=min(130,remaining())))
   fallback=False;selected=[];payload={};extra=[]
-  try:selected,payload,extra=prepare_visual(job['question'],plan['query'],snapshot,timings)
+  try:
+   if not is_exam or exam_needs_visual(job['question']):selected,payload,extra=prepare_visual(job['question'],plan['query'],snapshot,timings)
   except Exception as error:
    fallback=True;timings['fallbackReason']='image_prepare:'+type(error).__name__;logging.info('Original preparation unavailable: %s',type(error).__name__)
   context=answer_context(job['question'],plan['query'],plan['history'])
@@ -53,6 +61,10 @@ def run_single_pass(local,job,budget=220):
    adopted=set(parsed['usedFigureIds'])
    allowed={r['rank'] for r in wire.get('references',snapshot['references']) if not r.get('figures') or r['figures'][0]['id'] in adopted}
    if any(int(rank) not in allowed for rank in re.findall(r'\[片段(\d+)',parsed['answer'])):raise ValueError('Answer referenced unused evidence')
+   if is_exam:
+    from exam import validate_practice
+    try:parsed['practice']=validate_practice(parsed.get('practice'),list(allowed))
+    except ValueError:parsed['practice']=None
    return parsed
   try:parsed=generate(selected,payload)
   except Exception as error:
@@ -74,6 +86,7 @@ def run_single_pass(local,job,budget=220):
   answer=cite_original_pages(answer,refs)
   if fallback:answer+=WARNING
   result={'answer':answer,'references':refs}
+  if is_exam:result['practice']=parsed['practice']
  timings['totalMs']=round((time.monotonic()-start)*1000)
  return {**result,'retrievalQuery':plan['query'],'rewriteRoute':plan['route'],'timings':timings}
 

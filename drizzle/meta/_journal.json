@@ -50,6 +50,13 @@
       "when": 1791642931941,
       "tag": "0006_friendly_arachne",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1791731361035,
+      "tag": "0007_big_tinkerer",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,7 @@
 import inspect
 from pathlib import Path
 from figures import SYSTEM,parse_visual_result,serialize_visual_result
+from exam import EXAM_SYSTEM,validate_practice,parse_generation,serialize_generation
 
 HERE=Path(__file__).resolve().parent.parent/'sysarch-fullbook'
 PURE='\n'.join((HERE/n).read_text(encoding='utf-8') for n in ['citation_format.py','source_references.py']).replace('from citation_format import source_hint\n','')
@@ -30,7 +31,7 @@ from langchain_core.messages import SystemMessage,HumanMessage
 from lfx.custom import Component
 from lfx.io import MessageTextInput,HandleInput,Output
 from lfx.schema.message import Message
-'''+inspect.getsource(parse_visual_result)+'\n'+inspect.getsource(serialize_visual_result)+'''
+'''+inspect.getsource(parse_visual_result)+'\n'+inspect.getsource(serialize_visual_result)+'\n'+inspect.getsource(validate_practice)+'\n'+inspect.getsource(parse_generation)+'\n'+inspect.getsource(serialize_generation)+'''
 class TextbookSingleEvidenceAnswer(Component):
  display_name="教材一次作答 · 正文或原页"
  description="证据准备完成后，按是否有原页调用一个MiniMax模型句柄。"
@@ -51,6 +52,13 @@ class TextbookSingleEvidenceAnswer(Component):
   else:
    system=data['textPrompt']+"\\n只按以下格式输出，不输出think或标签外内容：<final_answer>Markdown中文答案</final_answer><used_figures>[]</used_figures>。答案正文不需要JSON转义，引用仅使用本轮提供的片段编号。"
    content=data['answerContext'];model=self.text_model
+  if data.get('taskType')=='exam':
+   system='''+repr(EXAM_SYSTEM)+'''
+   material=[{'citation':'[片段'+str(r['rank'])+']','source':r['label'],'content':r['content']} for r in data['references']]
+   question=json.dumps({'question':data['answerContext'],'materials':material},ensure_ascii=False)
+   if not data['images']:
+    content=question
+   else:content[0]={'type':'text','text':question}
   result=await asyncio.wait_for(model.ainvoke([SystemMessage(content=system),HumanMessage(content=content)]),timeout=max(1,min(180,data['timeoutSeconds'])))
-  return Message(text=serialize_visual_result(result.content,[i['id'] for i in data['images']]))
+  return Message(text=serialize_generation(result.content,[i['id'] for i in data['images']],[r['rank'] for r in data['references']],data.get('taskType')=='exam'))
 '''
