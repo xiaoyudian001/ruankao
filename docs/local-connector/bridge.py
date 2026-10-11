@@ -1,5 +1,5 @@
 """Outbound-only connector for one fixed, existing Langflow flow."""
-import json, logging, msvcrt, re, sys, threading, time
+import base64,json, logging, msvcrt, re, sys, threading, time
 from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
@@ -104,7 +104,7 @@ class LocalFlow:
             return True
         except Exception:return False
 
-    def run_conversation(self,job):
+    def prepare_conversation(self,job):
         mode=job.get('retrieval_mode') or 'default';flow_for_mode(mode)
         history=bounded_history(job.get('history_json','[]'))
         plan=prepare_rewrite(job['question'],history)
@@ -119,6 +119,11 @@ class LocalFlow:
                 plan=validate_rewrite(plan,json.dumps({'query':result['query'],'needs_clarification':result['route']=='clarification'},ensure_ascii=False))
             except Exception:
                 plan={**plan,'query':'','route':'clarification'}
+        return plan
+
+    def run_conversation(self,job):
+        mode=job.get('retrieval_mode') or 'default'
+        plan=self.prepare_conversation(job);history=plan['history'];history_json=encode_history(history)
         if plan['route']=='clarification':answer={'answer':CLARIFY,'references':[]}
         elif not history:answer=self.run_with_sources(job)
         else:
@@ -128,6 +133,38 @@ class LocalFlow:
                     'ConversationAnswerContext-SysArch':{'original_question':job['question'],'history_json':history_json}}}}
             answer=answer_payload(self.call('/run/session/'+CONVERSATION_FLOWS[mode],body,timeout=185))
         return {**answer,'retrievalQuery':plan['query'],'rewriteRoute':plan['route']}
+
+    def single_pass_ready(self):
+        try:
+            state=json.loads((ROOT/'single-pass-flows.json').read_text(encoding='utf-8'))
+            for fid,nid in [(state['generation'],'SingleEvidenceAnswer-SysArch'),*[(f,'EvidenceSnapshot-SysArch') for f in state['retrieval'].values()]]:
+                if not any(n['id']==nid for n in self.call('/flows/'+fid)['data']['nodes']):return False
+            return set(state['retrieval'])==set(FLOW_MODES)
+        except Exception:return False
+
+    def retrieve_evidence(self,job,plan,timeout=130):
+        from source_references import source_references
+        state=json.loads((ROOT/'single-pass-flows.json').read_text(encoding='utf-8'))
+        fid=state['retrieval'][job.get('retrieval_mode') or 'default']
+        body={'input_request':{'input_value':plan['query'],'input_type':'chat','output_type':'any','output_component':'EvidenceSnapshot-SysArch','session_id':'evidence-'+job['id'],'tweaks':{'ChatInput-z2rit':{'should_store_message':False}}}}
+        output=self.call('/run/session/'+fid,body,timeout=timeout)
+        for group in output.get('outputs',[]):
+            for entry in group.get('outputs',[]):
+                value=entry.get('outputs',{}).get('evidence',{}).get('message')
+                if not isinstance(value,dict):continue
+                if not isinstance(value.get('rows'),list) or len(value['rows'])>10 or source_references(value['rows'])!=value.get('references') or not isinstance(value.get('textPrompt'),str):raise ValueError('Invalid evidence snapshot')
+                if [r['rank'] for r in value['references']]!=list(range(1,len(value['rows'])+1)):raise ValueError('Evidence order mismatch')
+                return value
+        raise ValueError('Empty evidence snapshot')
+
+    def generate_evidence(self,job,snapshot,context,selected,payload,timeout=185):
+        from figures import visual_text,parse_visual_result
+        state=json.loads((ROOT/'single-pass-flows.json').read_text(encoding='utf-8'))
+        wire={**payload,'images':payload.get('images',[]),'references':payload.get('references',snapshot['references']),'textPrompt':snapshot['textPrompt'],'answerContext':context,'timeoutSeconds':max(1,timeout-8)}
+        encoded='single-answer-b64-v1:'+base64.b64encode(json.dumps(wire,ensure_ascii=False).encode()).decode()
+        body={'input_request':{'input_value':encoded,'input_type':'chat','output_type':'any','output_component':'SingleEvidenceAnswer-SysArch','session_id':'answer-'+job['id'],'tweaks':{'ChatInput-z2rit':{'should_store_message':False}}}}
+        output=self.call('/run/session/'+state['generation'],body,timeout=timeout)
+        return parse_visual_result(visual_text(output),[r['id'] for r in selected])
 
 def main():
     config=json.loads(sys.stdin.readline());sys.stdin.close()
@@ -190,7 +227,8 @@ def main():
     threading.Thread(target=page_worker,daemon=True).start()
     def heartbeat():
         while not stop.is_set():
-            modes=[mode for mode in FLOW_MODES if local.ready(mode)]
+            single_pass_available=local.single_pass_ready()
+            modes=[mode for mode in FLOW_MODES if single_pass_available and local.ready(mode)]
             available='default' in modes
             if available:ready.set()
             else:ready.clear()
@@ -200,7 +238,7 @@ def main():
             try:
                 conversational=available and local.conversation_ready()
                 cloud({'action':'heartbeat','ready':available,'modes':modes,'conversationReady':conversational,'sourcesReady':sources_ready.is_set(),'critiqueReady':critique_available})
-                (ROOT/'status.json').write_text(json.dumps({'updated_at':int(time.time()),'local_ready':available,'connected':True,'modes':modes,'conversation_ready':conversational,'sources_ready':sources_ready.is_set(),'critique_ready':critique_available,'figure_hybrid_ready':figures_ready.is_set(),'structured_ready':structured_ready.is_set()}),encoding='utf-8')
+                (ROOT/'status.json').write_text(json.dumps({'updated_at':int(time.time()),'local_ready':available,'connected':True,'modes':modes,'conversation_ready':conversational,'sources_ready':sources_ready.is_set(),'critique_ready':critique_available,'figure_hybrid_ready':figures_ready.is_set(),'structured_ready':structured_ready.is_set(),'single_pass_ready':single_pass_available}),encoding='utf-8')
             except Exception as error:
                 logging.info('Heartbeat unavailable: %s HTTP=%s',type(error).__name__,getattr(error,'code','n/a'))
                 (ROOT/'status.json').write_text(json.dumps({'updated_at':int(time.time()),'local_ready':available,'connected':False}),encoding='utf-8')
@@ -222,9 +260,12 @@ def main():
             try:
                 if is_critique:result['result']=local.run_critique(job)
                 else:
-                    from figures import try_enrich_answer
-                    text_result=local.run_conversation(job)
-                    result.update(try_enrich_answer(local,job,text_result,max(0,220-(time.monotonic()-start))))
+                    from single_pass import run_single_pass,record_timings
+                    answer=run_single_pass(local,job,budget=max(1,220-(time.monotonic()-start)))
+                    timings=answer.pop('timings')
+                    try:record_timings(job['id'],timings)
+                    except OSError as error:logging.info('Timing record unavailable: %s',type(error).__name__)
+                    result.update(answer)
             except Exception as error:
                 logging.info('Flow failed %s: %s',job['id'],type(error).__name__)
                 result['error']='AI 点评执行失败，请稍后重试。' if is_critique else '本地问答流程执行失败或超时，请检查 Langflow 和 Ollama 后重试。'

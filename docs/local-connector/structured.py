@@ -82,7 +82,7 @@ def fallback(query,refs,rows,limit=2):
   ranked.append(row)
  return ranked[:limit]
 
-def select_structured(query,refs,catalog=None,limit=2):
+def select_structured(query,refs,catalog=None,limit=2,timings=None):
  wanted=question_kinds(query)
  if not wanted:return []
  rows=load_catalog() if catalog is None else catalog
@@ -101,7 +101,10 @@ def select_structured(query,refs,catalog=None,limit=2):
   subset=FigureIndex([index.catalog[i] for i in positions],index.vectors[positions])
   pool=subset.candidates(query,query_vector(query,digest),limit=8)
   if not pool:return []
-  scores=bounded_rerank(query,pool)['scores']
+  mark=time.monotonic()
+  try:scores=bounded_rerank(query,pool)['scores']
+  finally:
+   if timings is not None:timings['visualRerankMs']=timings.get('visualRerankMs',0)+round((time.monotonic()-mark)*1000)
   if len(scores)!=len(pool) or not np.isfinite(scores).all():raise ValueError('Invalid structured scores')
   pages={p for ref in refs for p in ref.get('pdfPages',[])};terms=set(tokenize(query))-GENERIC
   selected=[]

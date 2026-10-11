@@ -27,18 +27,27 @@ def visual_query(question,retrieval_query):
  if not retrieval_query or re.sub(r'\s+','',question)==re.sub(r'\s+','',retrieval_query):return question
  return (retrieval_query+'\n原问题：'+question)[:4000]
 
-def select_figures(query,refs,catalog,limit=2):
- if not figure_number(query):
-  from structured import question_kinds,select_structured,materialize
-  if question_kinds(query):
-   selected=select_structured(query,refs,limit=limit)
-   if selected:return materialize(selected)
- if not figure_number(query):
-  try:
-   from figure_hybrid import select_hybrid
-   return select_hybrid(query,refs,catalog,limit)
-  except Exception as error:logging.info('Figure hybrid fallback: %s',type(error).__name__)
- return select_caption_figures(query,refs,catalog,limit)
+def select_figures(query,refs,catalog,limit=2,timings=None):
+ timings={} if timings is None else timings
+ start=time.monotonic();rerank_before=timings.get('visualRerankMs',0);image_before=timings.get('imagePrepareMs',0)
+ try:
+  if not figure_number(query):
+   from structured import question_kinds,select_structured,materialize
+   if question_kinds(query):
+    selected=select_structured(query,refs,limit=limit,timings=timings)
+    if selected:
+     mark=time.monotonic()
+     try:return materialize(selected)
+     finally:timings['imagePrepareMs']=timings.get('imagePrepareMs',0)+round((time.monotonic()-mark)*1000)
+  if not figure_number(query):
+   try:
+    from figure_hybrid import select_hybrid
+    return select_hybrid(query,refs,catalog,limit,timings=timings)
+   except Exception as error:logging.info('Figure hybrid fallback: %s',type(error).__name__)
+  return select_caption_figures(query,refs,catalog,limit)
+ finally:
+  excluded=timings.get('visualRerankMs',0)-rerank_before+timings.get('imagePrepareMs',0)-image_before
+  timings['visualRetrievalMs']=timings.get('visualRetrievalMs',0)+max(0,round((time.monotonic()-start)*1000)-excluded)
 
 def select_caption_figures(query,refs,catalog,limit=2):
  if not query.strip() or not catalog:return []

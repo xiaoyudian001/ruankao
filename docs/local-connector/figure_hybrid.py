@@ -125,14 +125,17 @@ def relevant_candidate(row,score):
  strong_caption=(row.get('lexical_rank') or 999)<=3 and row.get('caption_matches',0)>=1 and cosine>=.55
  return score>=-3.0 and (strong_semantic or strong_caption)
 
-def search_figures(query,refs,catalog,limit=2):
+def search_figures(query,refs,catalog,limit=2,timings=None):
  started=time.monotonic();index,m=load_index()
  if document_fingerprint(catalog)!=m['documentsSha']:raise ValueError('Catalog differs from index')
  digest=checked_model_digest(int(time.monotonic()//30))
  if digest!=m['modelDigest']:raise ValueError('Embedding model changed')
  pool=index.candidates(query,query_vector(query,digest))
  if not pool:return {'selected':[],'trace':{'method':'hybrid','candidates':[]}}
- scored=bounded_rerank(query,pool)
+ mark=time.monotonic()
+ try:scored=bounded_rerank(query,pool)
+ finally:
+  if timings is not None:timings['visualRerankMs']=timings.get('visualRerankMs',0)+round((time.monotonic()-mark)*1000)
  if len(scored['scores'])!=len(pool) or not np.isfinite(scored['scores']).all():raise ValueError('Invalid local figure relevance scores')
  pages={p for r in refs for p in r.get('pdfPages',[])}
  # Page evidence breaks ties; it cannot make a low-relevance candidate pass.
@@ -142,6 +145,6 @@ def search_figures(query,refs,catalog,limit=2):
  trace={'method':'bge-m3+bm25+rrf+local-cross-encoder','seconds':round(time.monotonic()-started,3),'rerankModel':scored['model_revision'],'candidates':[{'id':r['chunk_id'],'caption':r['figure']['caption'],'pdfPage':r['figure']['pdfPage'],'denseRank':r['dense_rank'],'lexicalRank':r['lexical_rank'],'cosine':r.get('dense_score'),'rrf':r['rrf_score'],'rerank':float(score)} for r,score in ranked],'selectedIds':[r['id'] for r in selected]}
  return {'selected':selected,'trace':trace}
 
-def select_hybrid(query,refs,catalog,limit=2):
+def select_hybrid(query,refs,catalog,limit=2,timings=None):
  if not needs_hybrid(query):return []
- return search_figures(query,refs,catalog,limit)['selected']
+ return search_figures(query,refs,catalog,limit,timings=timings)['selected']
