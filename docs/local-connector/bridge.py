@@ -211,7 +211,10 @@ def main():
             start=time.monotonic();result={'action':'critiqueComplete' if is_critique else 'complete','id':job['id'],'lease':job['lease']}
             try:
                 if is_critique:result['result']=local.run_critique(job)
-                else:result.update(local.run_conversation(job))
+                else:
+                    from figures import try_enrich_answer
+                    text_result=local.run_conversation(job)
+                    result.update(try_enrich_answer(local,job,text_result,max(0,220-(time.monotonic()-start))))
             except Exception as error:
                 logging.info('Flow failed %s: %s',job['id'],type(error).__name__)
                 result['error']='AI 点评执行失败，请稍后重试。' if is_critique else '本地问答流程执行失败或超时，请检查 Langflow 和 Ollama 后重试。'
