@@ -78,7 +78,7 @@ export default function DemoWorkspace(){
   return <main className="min-h-screen bg-[#f4f7fb] text-slate-950">
     <header className="border-b border-slate-200 bg-white"><div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-8">
       <a href="/demo" className={`flex items-center gap-3 ${focus}`}><span className="grid h-10 w-10 place-items-center rounded-xl bg-[#173f8a] text-white"><BookOpen size={21}/></span><span><b className="block text-sm">软考 AI 学习助手</b><span className="text-xs text-slate-500">公开演示</span></span></a>
-      <nav aria-label="项目导航" className="flex gap-5 text-sm"><a href="https://github.com/xiaoyudian001/ruankao" target="_blank" rel="noreferrer" className={`flex items-center gap-2 font-semibold text-[#173f8a] ${focus}`}><GitFork size={17}/>GitHub</a><a href="/" className={`text-slate-600 ${focus}`}>个人学习台<span className="sr-only">，仅所有者可用的学习功能</span></a></nav>
+      <nav aria-label="项目导航" className="flex gap-5 text-sm"><a href="https://github.com/xiaoyudian001/ruankao" target="_blank" rel="noreferrer" className={`flex items-center gap-2 font-semibold text-[#173f8a] ${focus}`}><GitFork size={17}/>GitHub</a><a href="/textbook" className={`text-slate-600 ${focus}`}>所有者问答</a></nav>
     </div></header>
     <div className="mx-auto max-w-7xl px-5 pb-12 pt-10 sm:px-8 sm:pt-14">
       <section className="mb-10 grid items-end gap-6 lg:grid-cols-[1.5fr_1fr]">

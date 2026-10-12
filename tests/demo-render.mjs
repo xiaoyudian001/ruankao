@@ -23,6 +23,7 @@ const common={onCitation:()=>{},onSubmit:()=>{},onChoose:()=>{}};
 const home=render(ui.default);
 assert.ok(home.includes('预录演示'));assert.ok(home.includes('无需登录'));assert.ok(home.includes('github.com/xiaoyudian001/ruankao'));
 assert.ok(home.includes('教材问答'));assert.ok(home.includes('案例练习'));assert.ok(home.includes('论文训练'));
+assert.ok(!home.includes('href="/"'),'演示访客不应被导航到仍使用共享数据的复习首页');
 const question=render(ui.QuestionExample,common);assert.ok(question.includes('查看自写原页'));
 let html=render(ui.CaseExample,{...common,revision:0,revealed:false});
 assert.ok(!html.includes(content.CASE.drafts[0].feedback));assert.ok(html.includes('提交示例答案'));
