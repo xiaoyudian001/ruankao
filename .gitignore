@@ -51,3 +51,20 @@ next-env.d.ts
 /.dev.vars
 __pycache__/
 *.pyc
+
+# Deployment archives and private local RAG data are not source files.
+/site*.tar.gz
+/output/
+/models/
+/textbook-bridge/*.json
+/textbook-bridge/*.log
+/textbook-bridge/*.lock
+/textbook-bridge/stop.flag
+/textbook-bridge/*.ndjson
+/sysarch-fullbook/*.json
+*.sqlite
+*.sqlite3
+*.db
+*.pdf
+*.npz
+*.safetensors

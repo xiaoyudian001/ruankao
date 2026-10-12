@@ -1,144 +1,170 @@
-# vinext-starter
+# 软考 40 天冲刺
 
-A clean full-stack starter running on [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and Drizzle support.
+面向系统架构设计师备考的学习工作台，将教材检索、图文问答、题目解析和主动回忆练习接到同一个网页中。
 
-## Prerequisites
+- **在线地址**：[复习总览](https://ruankao-40-day.xiaoydian.chatgpt.site/) · [教材问答](https://ruankao-40-day.xiaoydian.chatgpt.site/textbook) · [复习中心](https://ruankao-40-day.xiaoydian.chatgpt.site/review)
+- **功能基线**：已发布的网站第 21 版，更新于 2026-10-12。
+- **回答模型**：沿用本机 Langflow 配置的 MiniMax-M3。ChatGPT 登录负责身份验证，教材答案由 MiniMax 生成。
+- **部署方式**：网页和学习记录运行在云端；教材、向量库与检索流程运行在本机。电脑联网并启动连接器后，可以在网页中发起新的问答。
 
-- Node.js `>=22.13.0`
-- Portable: Windows, macOS, or Linux; no Bash required
-- Managed Linux: managed Linux runtime with Bash, `flock`, `curl`, `sha256sum`, and GNU `timeout`
-- Git is required only for publishing
+## 已实现的功能
 
-## Sites Lifecycle
+| 模块 | 当前能力 |
+| --- | --- |
+| 40 天复习总览 | 六阶段复习路线、每日打卡、学习时长与刷题数统计、今日卡片复习任务 |
+| 资料管理 | 上传、分类、下载和删除学习资料，单文件上限 25 MB |
+| 教材问答 | 从教材检索证据，生成解释、例子及可点击的片段引用 |
+| 完整检索实验 | 按需拆分复杂问题，语义召回与 BM25 关键词召回，经 RRF 融合、本地重排和上下文扩展后作答 |
+| 多轮追问 | 使用同一会话最近 3 轮已完成问答补全追问；无法确定对象时请求澄清 |
+| 来源核对 | 同时显示教材印刷页码与 PDF 物理页码；蓝色引用打开原页及检索文本，侧栏支持返回聊天 |
+| 教材图文问答 | 按图号或描述检索架构图、流程图，以及相关表格、公式原页；只展示模型实际采用的教材原页 |
+| 文字题解析 | 粘贴题干及选项，查看答案、解题思路、逐项解释和教材依据 |
+| 截图识题 | 上传或粘贴同一道题的最多两张截图；先核对识别文字，再携带原图解析 |
+| 类似练习 | 原题解析后按证据生成一道辅助单选题；提交选项后才显示答案和解析，刷新保留作答结果 |
+| 答案收藏 | 保存回答与来源快照，制作可编辑的问答卡片 |
+| 主动回忆 | 先自行作答，再揭晓参考答案并自评；按 1、3、7、14 天间隔安排复习 |
+| AI 回忆点评 | 基于原收藏的教材证据说明答对、遗漏和需要纠正的内容，保存点评记录 |
 
-The Sites initializer copies the shared starter and selects managed-linux only when `SITES_MANAGED_LINUX_CONTAINER=1`; otherwise it selects portable. It saves the selection only in ignored `.sites-runtime/execution-profile.json`. Both profiles copy/configure first, then use the plugin's separate `install-dependencies.mjs` step to measure installation independently. Edit source under `app/` and follow the Sites skill for installation, preview, builds, and publishing.
+详细范围和限制见 [功能清单](docs/features.zh-CN.md)。案例题分问训练和论文提纲辅导属于后续构想，尚未实现。
 
-Whenever reopening or moving a checkout, run `node <plugin-root>/scripts/configure-execution-profile.mjs` before project commands. Profile changes do not alter tracked source or require reinstalling otherwise-valid dependencies; restart an existing preview to use the new selection. Do not commit or upload `.sites-runtime/`.
+## 三个常用入口
 
-This starter does not use `wrangler.jsonc`.
+### 教材问答
 
-`install:ci` runs `npm ci` once against the shared lockfile, disables parent-workspace discovery, and includes required dev/optional dependencies despite production/omit settings. Sharp defaults to prebuilt binaries unless explicitly configured otherwise. Do not overlap installers.
+进入 `/textbook`，选择“教材问答”，输入完整问题。可选择“当前问答”或“完整检索实验”。答案中的片段引用可打开原 PDF 页核对。
 
-- **Portable:** Preserve host HOME, npm cache, registry, proxy, temporary paths, retry/concurrency settings, and lifecycle-script policy. Use `--prefer-offline --no-audit --no-fund`.
-- **Managed Linux:** Use the existing project-local HOME/cache/tmp setup and Linux install lock, tarball preflight, and timeout. Restore the image-seeded npm cache only when its lockfile hash matches; retain network fallback. Builds keep their existing timeout. These helpers are not invoked by the portable profile.
+同会话支持追问，例如先问“什么是 MTBF”，再问“它与 MTTR 有什么区别”。新建会话会清空追问上下文。检索问题可在答案下方展开查看。
 
-`scripts/sites-env.mjs` preserves the caller's HOME, npm cache, proxy, XDG, and temporary-directory configuration while defaulting Wrangler and Miniflare state to the checkout. If npm reports an unwritable cache, select a writable path with `npm_config_cache` for that install. The `dev` and `start` scripts also keep Wrangler logs inside the checkout. Generated `.sites-runtime/` and `.wrangler/` directories are disposable and ignored by Git.
+### 真题解析与截图识题
 
-On portable, `npm run dev` uses `vinext dev` with HMR, starting at port 5173. Vinext records the running server in ignored `.vinext/` state, rejects an ordinary duplicate launch, and recovers stale state after a stopped process; exactly simultaneous starts can race. Pass `--port <port>` or `--hostname <host>` after `npm run dev --` when needed; keep portable previews on loopback.
+1. 选择“真题解析”，粘贴题干和全部选项；也可上传或粘贴 PNG、JPEG、WebP 截图。
+2. 图片输入一次只处理一道题，最多两张。浏览器转为 PNG，每张转换后不超过 2 MB。
+3. 点击“识别题目”，检查输入框中的文字，尤其是否定词、数字、公式和选项。
+4. 点击“我已核对文字，保留原图解析”，再发送。原题图表会随经核对的文字一起进入图文模型。
+5. 查看解析与教材引用；有类似练习时，先选择选项，再提交查看解释。
 
-For browser QA on managed Linux, use `sites-preview start`. The project's dev script runs Vite and accepts the supervisor's `--host 0.0.0.0 --port 4173 --strictPort` arguments. The internal browser uses `http://terminal.local:4173/`; it is not a user-facing URL. The supervisor owns the preview lifecycle. The ignored local profile survives the supervisor's cleared process environment.
+原题截图可从历史回答中的“查看原题截图”回看。没有提供标准答案时，原题答案属于模型判断；生成的类似题是 AI 辅助练习，不是历年真题。
 
-The portable profile simulates ChatGPT sign-in only for loopback development requests. Visit `/signin-with-chatgpt?return_to=/` to sign in as `local_seedy` (`seedy@sites.test`, display name `Seedy`) and `/signout-with-chatgpt?return_to=/` to sign out. The development cookie preserves that identity across server restarts. Mock auth is disabled in the managed-linux profile and is not included in production builds; hosted authentication remains dispatch-owned.
+### 复习闭环
 
-The Worker uses `vinext/server/fetch-handler`, including Vinext's config-aware image handling. After building, `npm start` runs that Worker locally through Wrangler on `127.0.0.1`, sharing `.wrangler/state` with dev preview and local D1 migrations; it does not deploy the site or simulate sign-in. Use the URL printed by the server. Pass `npm start -- --port <port>` to select a different built-preview port.
+`答案收藏 → 复习卡片 → 主动回忆 → 自评或 AI 点评 → 40 天复习计划`
 
-Local previews use Miniflare's placeholder `Request.cf` metadata without a network lookup. Set `CLOUDFLARE_CF_FETCH_ENABLED=true` to opt into fetching preview metadata; this setting does not change hosted request metadata.
+收藏内容与卡片存储在 D1。已保存的内容和自评练习可以在电脑离线时查看；新问答、AI 点评和未缓存的原页仍需要本机服务在线。
 
-Local tool usage metrics are disabled by default. Set `WRANGLER_SEND_METRICS=true` to opt in.
+## 实现机制
 
-## Included Shape
+### 问答链路
 
-- edit site code under `app/`
-- `app/chatgpt-auth.ts` provides optional dispatch-owned ChatGPT sign-in helpers
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/index.ts` reads the D1 binding from the Cloudflare Worker environment
-- `db/schema.ts` starts intentionally empty
-- `@cloudflare/workers-types` provides Worker types; `cloudflare-env.d.ts` declares optional `DB`/`BUCKET` bindings—update these declarations if binding names change
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
+`网页提交问题 → 云端任务队列 → 本机连接器领取 → Langflow 检索证据 → MiniMax 生成答案 → 校验引用并清理输出 → 云端保存 → 网页显示`
 
-## Workspace Auth Headers
+- **向量化**：Ollama 的 `bge-m3:latest` 在本机生成文本向量。
+- **向量库**：Langflow 管理的 Chroma Local 知识库；当前教材库为 `SysArchTutorRAGv3`。
+- **混合检索**：完整模式结合语义检索与 BM25，用 RRF 合并排名，再通过本地 CrossEncoder 重排。
+- **重排模型**：`cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`，从本机模型目录加载。
+- **答案生成**：正文和图文使用同一供应商 MiniMax；通常最终答案生成一次。追问重写、复杂问题规划是独立步骤，可能额外调用模型。
+- **图像预算**：每轮最多两张教材原页；截图题另支持最多两张用户原题截图。原题截图不充当教材引用。
+- **页码来源**：程序维护页码元数据，模型不能自行推算页码。跨页分片保留完整来源范围。
 
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
+图示索引使用图题、章节和同页正文的文本向量，不能等同于将原图像素直接写入向量库。模型实际读取图片发生在相关原页被选中之后。
 
-The user ID is stable for the same user on the same Site and different across Sites. Use it as the durable user key; use email and name for display or contact purposes.
+### 连接方式
 
-SIWC-authenticated workspace sites may also receive `oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty `name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by `oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
+连接器只主动向固定网站发起 HTTPS 请求。本项目没有把本机 Langflow 或 Ollama 的端口直接公开到互联网。
 
-Treat the full name as optional and fall back to email when it is absent:
+队列使用任务类型、领取租约和过期检查；问答、截图识别与点评共享任务互斥规则。回传失败只重试结果交付，避免因网络重试重复生成答案。截图只能由所有者读取，本机桥接只能在有效任务租约内取得对应原图。
 
-```tsx
-import { headers } from "next/headers";
+详细说明见 [本机运行与部署](docs/setup.zh-CN.md) 及 [一次答案生成](docs/local-connector/single-answer.md)。
 
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
+## 技术栈
 
-  const displayName = fullName ?? email;
-  // ...
-}
+| 部分 | 使用的工具 |
+| --- | --- |
+| 网页 | TypeScript、React、Vinext、Vite、Tailwind CSS |
+| 云端运行 | Cloudflare Workers，由 Sites 发布 |
+| 结构化数据 | Cloudflare D1、Drizzle ORM |
+| 文件存储 | Cloudflare R2 |
+| 流程编排 | IBM Langflow Desktop |
+| 嵌入与检索 | Ollama BGE-M3、Chroma Local、BM25、RRF |
+| 本地重排 | Transformers / PyTorch CrossEncoder |
+| 文档处理 | Docling、RapidOCR、PDF 渲染与清理脚本 |
+| 回答和图文识别 | MiniMax-M3 |
+| 本机连接 | Python、Windows PowerShell、DPAPI 加密配置 |
+
+## 源码目录
+
+```text
+app/                    网页、聊天、复习中心与 API
+lib/textbook/           问答、来源、题目、截图等数据契约
+lib/review/             卡片排期、复习与点评逻辑
+db/                     Drizzle 表结构
+drizzle/                按顺序追加的数据库迁移
+textbook-bridge/        本机连接、图文生成、流程设置与验证源码
+sysarch-fullbook/       教材解析、清理、检索、重排和引用处理源码
+docs/local-connector/   各阶段实现说明与连接器源码快照
+docs/superpowers/       功能设计及实施记录
+scripts/                前端运行和构建脚本
+tests/                  网页契约、实际路由适配及数据库测试
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+本仓库保存源码，不包含原教材、OCR 全文、向量数据、模型权重、用户上传截图、学习记录或真实密钥。部分本机脚本保留当前部署的 Windows 路径和流程 ID；换机器时需要核对配置，克隆仓库不会自动得到现有 Langflow 流程、知识库或云端数据。
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs optional or required ChatGPT sign-in:
+## 前端开发
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use the returned `userId` as the stable user key for user-owned records; do not use email as a durable identifier.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send anonymous visitors through Sign in with ChatGPT.
-- In a Server Component, start sign-in with `<a href={chatGPTSignInPath(returnTo)} target="_top">`. The auth helper module is server-only; do not import it into a Client Component.
-- Do not use `fetch`, XHR, a client-side router, or a framework link that can prefetch the sign-in route. SIWC must start as a top-level navigation.
-- Never request the AuthAPI authorization endpoint directly. The dispatch-owned `/signin-with-chatgpt` route must start the SIWC flow.
-- Use `chatGPTSignOutPath(returnTo)` for browser sign-out links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because they depend on per-request identity headers.
+需要 Node.js `>=22.13.0`，以及与 `package.json` 中 `packageManager` 一致的 pnpm。
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the OAuth cookies, and identity header injection. Do not implement app routes for those reserved paths. Routes that do not import and call the helper remain anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the Sites hosting platform's access policy controls for workspace-wide restrictions, or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Local D1 migrations
-
-For a D1-backed local preview, generate SQL with `npm run db:generate`. Build once through the Sites skill's build entrypoint (or `npm run build` for standalone use) to generate `dist/server/wrangler.json`, rebuilding if bindings change. From the project root, apply each pending migration in order:
-
-```sh
-node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_example.sql
+```powershell
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
-Replace the filename with the pending migration and `DB` with your D1 binding name if different. Use `.wrangler/state`, not `.wrangler/state/v3`; Wrangler adds the versioned directories. Do not replay migrations already applied locally. This updates only the preview database; publishing applies production migrations separately.
+默认开发端口为 `5173`。干净克隆默认使用 portable 执行模式；项目不要求为 Windows 前端开发安装 Bash。`install:ci` 是保留的环境专用脚本，不是 Windows 快速开始入口。
 
-## Diagnostic Commands
+```powershell
+pnpm build
+pnpm start
+```
 
-- `npm run install:ci`: perform the one locked dependency install
-- `npm run dev`: start the Vite/Vinext development server
-- `npm run build`: build the deployable Sites artifact
-- `npm run start`: preview the built Worker locally with D1/R2 support
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+构建后 `pnpm start` 使用 Wrangler 在本机预览 Worker，不会发布到线上。完整的登录、D1/R2 配置和迁移步骤见 [运行说明](docs/setup.zh-CN.md)。
 
-When using the Sites plugin, follow its skill instructions for installation, builds, and publishing. These npm commands remain available for standalone use.
+原始 Sites/Vinext 模板的运行约定见 [框架说明](docs/framework.zh-CN.md)。
 
-The portable build runs Vinext directly without a host `timeout` command. The managed-linux build uses `scripts/build-verified.sh` and its existing `SITES_BUILD_TIMEOUT` setting.
+## 验证
 
-## Learn More
+以下命令在项目根目录运行，主要检查数据契约和本地适配器，不会自动把题目写入生产会话：
 
-## 教材复习闭环
+```powershell
+node --experimental-strip-types --test tests/*.test.mjs
+node tests/exam-routes.mjs
+node tests/screenshot-routes.mjs
+node tests/critique-routes.mjs
+node tests/exam-render.mjs
+node tests/screenshot-render.mjs
+python -m unittest discover -s tests -p 'test_*.py'
+```
 
-教材问答成功后点击“收藏答案”，进入 `/review` 制作可编辑的问答卡片。练习先隐藏参考答案，用户作答或选择想不起来后揭晓，再自评掌握程度。新卡今天到期；没记住和部分记住明天复习；连续记住按 1、3、7、14 天间隔安排。日期按 Asia/Shanghai 计算。
+本机连接器测试在准备了 Python 依赖的环境中运行：
 
-收藏、卡片及练习记录存储于 D1，沿用教材问答的 owner 身份检查与同源写入。收藏快照由服务器复制，浏览器只提交原回答 id；练习提交使用请求 id 和卡片版本，防止重试重复计数。练习与每日打卡分别记录，原首页显示今日复习任务。查看已收藏内容和练习无需电脑在线；未缓存的原 PDF 页依赖原页服务。
+```powershell
+python -m unittest discover -s textbook-bridge -p 'test*.py'
+```
 
-新增 schema-only 迁移 `drizzle/0005_safe_chameleon.sql`。验证：`node --experimental-strip-types --test tests/*.test.mjs`；`python -m unittest discover -s tests -p 'test_*.py'`。`node tests/review-local.mjs` 仅针对 localhost:5173 的 Sites 本地测试账号，需先创建本地测试问答样本；禁止改为线上网址。
+真实模型验证脚本会调用现有 MiniMax 服务；运行前应核对输入、配置和模型费用。教材相关验证需要本机自备教材及索引。现有部署曾通过 61 项连接器检查；公开源码缺少教材图示目录时，其中 5 项集成检查会明确跳过，其余 56 项使用规则或模拟数据验证。传输测试使用临时模拟流程清单，不需要真实密钥。通过样例不能保证所有题目或所有教材公式都能正确识别。浏览器完整交互验证尚未完成。
 
-## AI 回忆点评
+## 当前边界
 
-揭晓参考答案后可点“点评我的回忆”。服务器复制本人卡片与原收藏教材证据，经 outbound bridge 调用本机独立 Langflow「教材主动回忆 · AI点评」，使用既有 MiniMax-M3 配置、温度 0.1。不是 ChatGPT 判分；不经过原检索链重复查库。事实依据为原教材片段，卡片背面可编辑，仅作辅助。无证据的卡片不提供 AI 点评。
+- 新答案依赖电脑联网、连接器、Langflow 和 Ollama；开机自动启动发生在用户登录 Windows 后。
+- 当前复习日历的起始日期和考试日期写在源码中，换考试周期需要调整，页面日期不代表官方考试公告。
+- 教材问答、截图和复习模块有所有者及同源检查；首页打卡和资料接口目前是单套共享数据，尚未实现多用户隔离。
+- 长续表、看不清的公式、缺少选项的题目需要人工核对。无有效证据时不保证生成类似练习。
+- 用户原题图文会发送给配置的 MiniMax 服务；教材正文向量化和本地重排在本机完成。
+- 项目未单独声明开源许可证。第三方组件的许可证保留在相应目录；教材、模型权重及第三方服务的使用条件应分别确认。
 
-结果包含已答对、遗漏、需要纠正、练习建议与蓝色片段引用。结果保存到 D1，自评记录关联本次点评；自评仍决定 1/3/7/14 天间隔，AI 不自动改变排期。点评排队期间可先自评，结果稍后在计划练习记录中查看；提交任务的短时间内暂停评分避免丢失关联。离线或模型失败不影响自评。
+## 相关文档
 
-追加迁移 `drizzle/0006_friendly_arachne.sql`，不改旧迁移。桥接新增 `critiqueReady`、`critiqueClaim`、`critiqueComplete`，领取与问答互斥，严格引用校验与 180 秒租约。`F:/daily/textbook-bridge/setup_critique_flow.py` 创建专用模型流程，`verify_critique.py` 验证本机真实调用，不上传测试练习到生产。
-
-点评接口验证：`node --experimental-strip-types --experimental-sqlite tests/critique-routes.mjs`，执行实际接口处理函数，用独立内存 SQLite 校验身份、快照、引用、租约、幂等与自评关联。`docs/local-connector/` 保存本次本机连接程序源码，不含 `config.json`、密钥或学习记录。问答与点评 JSON 跨 Langflow 字符串层使用版本化 Base64 编码，完整保留转义字符。
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+- [功能清单](docs/features.zh-CN.md)
+- [本机运行与部署](docs/setup.zh-CN.md)
+- [框架说明](docs/framework.zh-CN.md)
+- [原图问答](docs/local-connector/figures.md)
+- [表格与公式问答](docs/local-connector/structured.md)
+- [真题解析](docs/local-connector/exam-analysis.md)
+- [截图识题](docs/local-connector/screenshots.md)
