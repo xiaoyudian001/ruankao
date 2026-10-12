@@ -26,4 +26,14 @@ class CritiqueContract(unittest.TestCase):
   raw='<critique><summary>核对 "业务条件"\n按本问判断</summary><correct><point><text>已说明通用结构</text><ranks>[2]</ranks></point></correct><missing></missing><corrections></corrections><suggestion>可以进一步对比，但非必需。</suggestion><insufficient_evidence>false</insufficient_evidence></critique>'
   result=parse_result(raw,[2]);self.assertIn('"业务条件"\n',result['summary']);self.assertEqual(result['missing'],[]);self.assertEqual(result['correct'][0]['ranks'],[2])
   with self.assertRaises(ValueError):parse_result(raw,[1])
+ def test_tag_order_and_empty_self_closing_containers_are_equivalent(self):
+  from critique import parse_result
+  raw='<critique><insufficient_evidence>false</insufficient_evidence><suggestion>补充当前小问即可。</suggestion><summary>核心要点已覆盖。</summary><correct/><corrections /><missing></missing></critique>'
+  result=parse_result(raw,[1]);self.assertEqual(result['summary'],'核心要点已覆盖。');self.assertEqual(result['missing'],[])
+  with self.assertRaises(ValueError):parse_result(raw.replace('<summary>核心要点已覆盖。</summary>',''),[1])
+ def test_consecutive_explicit_rank_arrays_are_normalized_without_inventing_sources(self):
+  from critique import parse_result
+  raw='<critique><summary>已覆盖</summary><correct><point><text>通用结构与差异适配</text><ranks>[1], [2]</ranks></point></correct><missing/><corrections/><suggestion>继续练习</suggestion><insufficient_evidence>false</insufficient_evidence></critique>'
+  result=parse_result(raw,[1,2]);self.assertEqual(result['correct'][0]['ranks'],[1,2])
+  with self.assertRaises(ValueError):parse_result(raw,[1])
 if __name__=='__main__':unittest.main()

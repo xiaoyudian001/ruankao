@@ -39,21 +39,32 @@ def build_prompt(job):
   system+='\n这是案例逐问练习。仅核对当前小问明确要求的核心要点，correct/missing/corrections各最多3条。用户等价概括已表达出含义，即使没有照抄术语或过程，也应视为覆盖。missing只列真正缺失且回答本问必需的内容；无必需遗漏则为空。不能把教材里未被问及的产品线、资产库、复用阶段、隔离区域、设计文档等旁支列为必须得分点。区分核心遗漏和可选深化；可选深化只放suggestion并明确非必需。不能假定案例未给出的业务对象、代码依赖、部署状态或组织条件。参考分析也要核对证据，不能把参考分析中未被本问要求的扩展当作必答点。'
  return {'system':system,'data':json.dumps(data,ensure_ascii=False)}
 
+def parse_rank_list(raw):
+ try:return json.loads(raw)
+ except json.JSONDecodeError:
+  # Some model replies write [1], [2] instead of [1,2]. Only normalize this
+  # explicit numeric notation; the normal validator still checks supplied ranks.
+  if not re.fullmatch(r'\s*\[\s*\d+\s*\](?:\s*[,、]?\s*\[\s*\d+\s*\])+\s*',raw):raise ValueError('Invalid critique rank notation')
+  return [int(x) for x in re.findall(r'\d+',raw)]
+
 def parse_result(raw,ranks):
  text=re.sub(r'<think\b[^>]*>.*?(?:</think\s*>|$)','',raw,flags=re.I|re.S).strip()
  if text.startswith('```'):text=re.sub(r'^```(?:json)?\s*|\s*```$','',text).strip()
  if text.startswith('<critique>'):
   tags=['summary','correct','missing','corrections','suggestion','insufficient_evidence']
-  pattern=r'<critique>\s*'+r'\s*'.join('<'+tag+r'>(.*?)</'+tag+'>' for tag in tags)+r'\s*</critique>'
-  matched=re.fullmatch(pattern,text,flags=re.S)
+  for tag in ('correct','missing','corrections'):text=re.sub('<'+tag+r'\s*/>','<'+tag+'></'+tag+'>',text)
+  matched=re.fullmatch(r'<critique>\s*(.*?)\s*</critique>',text,flags=re.S)
   if not matched:raise ValueError('Incomplete critique envelope')
-  fields=dict(zip(tags,matched.groups()));value={'summary':fields['summary'],'suggestion':fields['suggestion']}
+  pattern=r'<(summary|correct|missing|corrections|suggestion|insufficient_evidence)>(.*?)</\1>'
+  parts=re.findall(pattern,matched.group(1),flags=re.S);fields=dict(parts)
+  if len(parts)!=6 or set(fields)!=set(tags) or re.sub(pattern,'',matched.group(1),flags=re.S).strip():raise ValueError('Incomplete critique envelope')
+  value={'summary':fields['summary'],'suggestion':fields['suggestion']}
   if fields['insufficient_evidence'].strip() not in ('true','false'):raise ValueError('Invalid critique boolean')
   value['insufficientEvidence']=fields['insufficient_evidence'].strip()=='true'
   point_pattern=r'<point>\s*<text>(.*?)</text>\s*<ranks>(.*?)</ranks>\s*</point>'
   for key in ('correct','missing','corrections'):
    if re.sub(point_pattern,'',fields[key],flags=re.S).strip():raise ValueError('Invalid critique points')
-   value[key]=[{'point':point,'ranks':json.loads(rr)} for point,rr in re.findall(point_pattern,fields[key],flags=re.S)]
+   value[key]=[{'point':point,'ranks':parse_rank_list(rr)} for point,rr in re.findall(point_pattern,fields[key],flags=re.S)]
  else:
   try:value=json.loads(text)
   except json.JSONDecodeError as exc:raise ValueError('Invalid model JSON at character '+str(exc.pos)) from exc
@@ -94,9 +105,15 @@ class RecallCritique(Component):
   except Exception as exc:raise ValueError('Saved evidence JSON failed: '+str(exc)) from exc
   refs=job["references_json"]
   if isinstance(refs,str):refs=json.loads(refs)
-  message=await asyncio.wait_for(self.review_model.ainvoke([SystemMessage(content=prompt["system"]),HumanMessage(content=prompt["data"])]),timeout=100)
-  result=parse_result(message.content,[r["rank"] for r in refs])
-  return Message(text=json.dumps(result,ensure_ascii=False))
+  deadline=asyncio.get_running_loop().time()+110
+  for attempt in range(2):
+   message=await asyncio.wait_for(self.review_model.ainvoke([SystemMessage(content=prompt["system"]),HumanMessage(content=prompt["data"])]),timeout=max(0.1,deadline-asyncio.get_running_loop().time()))
+   try:
+    result=parse_result(message.content,[r["rank"] for r in refs])
+    return Message(text=json.dumps(result,ensure_ascii=False))
+   except ValueError as error:
+    if attempt or not any(s in str(error) for s in ('Incomplete critique envelope','Invalid model JSON')) or deadline-asyncio.get_running_loop().time()<8:raise
+    prompt['system']+='\\n前一次输出格式不完整。请简洁重写，完整输出critique和所有六个容器标签，空要点用闭合空容器；优先完成结构，不输出标签外文字。'
 '''
 from pathlib import Path
 COMPONENT_CODE=Path(__file__).read_text(encoding='utf-8').split('\nCOMPONENT_CODE=')[0]+COMPONENT_CODE
