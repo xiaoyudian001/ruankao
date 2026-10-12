@@ -14,7 +14,7 @@ class QueueTest(unittest.TestCase):
         self.db.execute("UPDATE textbook_jobs SET retrieval_mode='complete' WHERE id='two'")
         self.db.executescript("ALTER TABLE textbook_jobs ADD history_json TEXT NOT NULL DEFAULT '[]'; ALTER TABLE textbook_jobs ADD retrieval_query TEXT; ALTER TABLE textbook_jobs ADD rewrite_route TEXT; ALTER TABLE textbook_jobs ADD owner_id TEXT;")
         self.db.execute("ALTER TABLE textbook_jobs ADD references_json TEXT NOT NULL DEFAULT '[]'")
-        self.db.executescript("ALTER TABLE textbook_jobs ADD task_type TEXT NOT NULL DEFAULT 'qa'; ALTER TABLE textbook_jobs ADD exam_json TEXT;")
+        self.db.executescript("ALTER TABLE textbook_jobs ADD task_type TEXT NOT NULL DEFAULT 'qa'; ALTER TABLE textbook_jobs ADD exam_json TEXT; ALTER TABLE textbook_jobs ADD screenshot_json TEXT;")
         self.db.execute('CREATE TABLE textbook_critiques(id TEXT,status TEXT)')
     def test_one_running_and_reject_wrong_or_expired_completion(self):
         self.assertEqual(self.db.execute(self.claim,('lease-1',20)).fetchone()[0],'one')
@@ -28,9 +28,9 @@ class QueueTest(unittest.TestCase):
         self.assertIsNone(self.db.execute(self.complete,args).fetchone())
         claimed=self.db.execute(self.claim,('lease-2',23)).fetchone()
         self.assertEqual(claimed[0],'two')
-        self.assertEqual(claimed[-3],'complete')
-        self.assertEqual(claimed[-2],'[]')
-        self.assertEqual(claimed[-1],'qa')
+        self.assertEqual(claimed[-4],'complete')
+        self.assertEqual(claimed[-3],'[]')
+        self.assertEqual(claimed[-2],'qa')
 
     def test_history_sql_excludes_other_sessions_owners_and_failed_rows(self):
         code=(Path(__file__).parents[1]/'lib/textbook/server.ts').read_text(encoding='utf-8')

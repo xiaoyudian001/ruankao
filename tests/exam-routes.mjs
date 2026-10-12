@@ -22,7 +22,9 @@ export async function expireJobs(){}
 function statement(sql,args=[]){return {bind:(...a)=>statement(sql,a),first:async()=>sqlite.prepare(sql).get(...args)??null,all:async()=>({results:sqlite.prepare(sql).all(...args)}),run:async()=>({meta:sqlite.prepare(sql).run(...args)})};}
 const db={prepare:statement,batch:async statements=>{sqlite.exec('BEGIN');try{const results=[];for(const s of statements)results.push(await s.run());sqlite.exec('COMMIT');return results;}catch(e){sqlite.exec('ROLLBACK');throw e;}}};
 export const database=()=>db;
-export async function bridgeState(){const s=sqlite.prepare('SELECT * FROM textbook_bridge').get();return {online:s?.ready===1,availableModes:s?.ready===1?['default','complete']:[],conversationReady:true,examReady:s?.exam_ready===1};}
+export const objects=new Map();
+export const runtime=()=>({BUCKET:{put:async(k,b)=>objects.set(k,new Uint8Array(b)),delete:async k=>objects.delete(k),get:async k=>{const b=objects.get(k);return b?{body:b,arrayBuffer:async()=>b.buffer}:null;}}});
+export async function bridgeState(){const s=sqlite.prepare('SELECT * FROM textbook_bridge').get();return {online:s?.ready===1,availableModes:s?.ready===1?['default','complete']:[],conversationReady:true,examReady:s?.exam_ready===1,screenshotReady:s?.screenshot_ready===1};}
 export const CLAIM_SQL=${JSON.stringify(sql('CLAIM_SQL'))};
 export const COMPLETE_SQL=${JSON.stringify(sql('COMPLETE_SQL'))};
 export const HISTORY_SQL=${JSON.stringify(sql('HISTORY_SQL'))};
@@ -30,7 +32,7 @@ export const HISTORY_SQL=${JSON.stringify(sql('HISTORY_SQL'))};
 function compile(file,changes){let code=fs.readFileSync(file,'utf8');for(const [from,to] of Object.entries(changes))code=code.replaceAll(from,to);const target=path.join(dir,file.replaceAll('/','-').replace('.ts','.mjs'));fs.writeFileSync(target,ts.transpileModule(code,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText);return pathToFileURL(target).href;}
 const serverUrl=pathToFileURL(stub).href;
 const critiqueServer=compile('lib/review/critique-server.ts',{'../textbook/server':serverUrl,'../textbook/sources':url('lib/textbook/sources.ts'),'./critique':url('lib/review/critique.ts')});
-const shared={'../../../../lib/textbook/server':serverUrl,'../../../../lib/textbook/policy':url('lib/textbook/policy.ts'),'../../../../lib/textbook/sources':url('lib/textbook/sources.ts'),'../../../../lib/textbook/conversation':url('lib/textbook/conversation.ts'),'../../../../lib/textbook/exam':url('lib/textbook/exam.ts'),'../../../../lib/review/critique-server':critiqueServer,'../../../../lib/review/critique':url('lib/review/critique.ts')};
+const shared={'../../../../lib/textbook/screenshots':url('lib/textbook/screenshots.ts'),'../../../../lib/textbook/server':serverUrl,'../../../../lib/textbook/policy':url('lib/textbook/policy.ts'),'../../../../lib/textbook/sources':url('lib/textbook/sources.ts'),'../../../../lib/textbook/conversation':url('lib/textbook/conversation.ts'),'../../../../lib/textbook/exam':url('lib/textbook/exam.ts'),'../../../../lib/review/critique-server':critiqueServer,'../../../../lib/review/critique':url('lib/review/critique.ts')};
 const chat=await import(compile('app/api/textbook/chat/route.ts',shared));
 const bridge=await import(compile('app/api/textbook/bridge/route.ts',shared));
 const exam=await import(compile('app/api/textbook/exam/route.ts',shared));

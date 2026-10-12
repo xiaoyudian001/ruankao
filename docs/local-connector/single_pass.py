@@ -57,7 +57,7 @@ def run_single_pass(local,job,budget=220):
   context=answer_context(job['question'],plan['query'],plan['history'])
   def generate(images,wire):
    timings['answerCalls']+=1
-   parsed=measured('generationMs',lambda:local.generate_evidence(job,snapshot,context,images,wire,timeout=min(90 if images else 185,remaining())))
+   parsed=measured('generationMs',lambda:local.generate_evidence(job,snapshot,context,images,wire,timeout=min(150 if job.get('question_images') else 90 if images else 185,remaining())))
    adopted=set(parsed['usedFigureIds'])
    allowed={r['rank'] for r in wire.get('references',snapshot['references']) if not r.get('figures') or r['figures'][0]['id'] in adopted}
    if any(int(rank) not in allowed for rank in re.findall(r'\[片段(\d+)',parsed['answer'])):raise ValueError('Answer referenced unused evidence')
@@ -68,7 +68,7 @@ def run_single_pass(local,job,budget=220):
    return parsed
   try:parsed=generate(selected,payload)
   except Exception as error:
-   if not selected:raise
+   if not selected or job.get('question_images'):raise
    timings['fallbackReason']='visual_generation:'+type(error).__name__
    logging.info('Single visual generation unavailable: %s',type(error).__name__)
    fallback=True;selected=[];extra=[];payload={};parsed=generate([], {})

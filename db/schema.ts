@@ -38,6 +38,8 @@ export const textbookJobs = sqliteTable("textbook_jobs", {
   taskType:text('task_type').notNull().default('qa'),
   examJson:text('exam_json'),
   practiceChoice:text('practice_choice'),
+  screenshotJson:text('screenshot_json'),
+  recognitionJson:text('recognition_json'),
   retrievalMode: text("retrieval_mode").notNull().default("default"),
   historyJson: text("history_json").notNull().default("[]"),
   retrievalQuery: text("retrieval_query"),
@@ -62,6 +64,7 @@ export const textbookBridge = sqliteTable("textbook_bridge", {
   sourcesReady: integer("sources_ready").notNull().default(0),
   critiqueReady: integer("critique_ready").notNull().default(0),
   examReady:integer('exam_ready').notNull().default(0),
+  screenshotReady:integer('screenshot_ready').notNull().default(0),
 });
 
 export const textbookPages = sqliteTable("textbook_pages", {

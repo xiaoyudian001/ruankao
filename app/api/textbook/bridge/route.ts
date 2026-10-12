@@ -1,4 +1,4 @@
-import { bridgeAuth, CLAIM_SQL, COMPLETE_SQL, database, expireJobs, json, now } from '../../../../lib/textbook/server';
+import { bridgeAuth, CLAIM_SQL, COMPLETE_SQL, database, expireJobs, json, now,runtime } from '../../../../lib/textbook/server';
 import { cleanAnswer, validId, RETRIEVAL_MODES } from '../../../../lib/textbook/policy';
 import { rewriteDiagnostic } from '../../../../lib/textbook/conversation';
 import {references,PAGE_CLAIM_SQL} from '../../../../lib/textbook/sources';
@@ -6,6 +6,7 @@ import {storedReferences} from '../../../../lib/textbook/sources';
 import {CRITIQUE_CLAIM_SQL,CRITIQUE_COMPLETE_SQL,expireCritiques} from '../../../../lib/review/critique-server';
 import {validateCritique} from '../../../../lib/review/critique';
 import {validatePractice} from '../../../../lib/textbook/exam';
+import {parseManifest,validateRecognition,pngInfo} from '../../../../lib/textbook/screenshots';
 
 export async function POST(request: Request) {
   if (!bridgeAuth(request)) return json({error:'Unauthorized'},401);
@@ -14,7 +15,7 @@ export async function POST(request: Request) {
     const body = await request.json() as Record<string,unknown>;
     if (body.action === 'heartbeat') {
       const modes=Array.isArray(body.modes)?Object.keys(RETRIEVAL_MODES).filter(mode=>(body.modes as unknown[]).includes(mode)):['default'];
-      await database().prepare('INSERT INTO textbook_bridge (id,last_seen,ready,modes,conversation_ready,sources_ready,critique_ready,exam_ready) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen, ready=excluded.ready, modes=excluded.modes, conversation_ready=excluded.conversation_ready, sources_ready=excluded.sources_ready,critique_ready=excluded.critique_ready,exam_ready=excluded.exam_ready').bind('desktop',now(),body.ready===true?1:0,JSON.stringify(modes),body.conversationReady===true?1:0,body.sourcesReady===true?1:0,body.critiqueReady===true?1:0,body.examReady===true?1:0).run();
+      await database().prepare('INSERT INTO textbook_bridge (id,last_seen,ready,modes,conversation_ready,sources_ready,critique_ready,exam_ready,screenshot_ready) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen, ready=excluded.ready, modes=excluded.modes, conversation_ready=excluded.conversation_ready, sources_ready=excluded.sources_ready,critique_ready=excluded.critique_ready,exam_ready=excluded.exam_ready,screenshot_ready=excluded.screenshot_ready').bind('desktop',now(),body.ready===true?1:0,JSON.stringify(modes),body.conversationReady===true?1:0,body.sourcesReady===true?1:0,body.critiqueReady===true?1:0,body.examReady===true?1:0,body.screenshotReady===true?1:0).run();
       return json({ok:true});
     }
     if (body.action === 'claim') {
@@ -22,6 +23,19 @@ export async function POST(request: Request) {
       await expireCritiques();
       const job = await database().prepare(CLAIM_SQL).bind(crypto.randomUUID(),now()).first();
       return json({job});
+    }
+    if(body.action==='screenshotRead'&&validId(body.id)&&validId(body.lease)){
+      const job=await database().prepare("SELECT screenshot_json FROM textbook_jobs WHERE id=? AND status='running' AND lease=? AND leased_at>=? AND task_type IN ('exam','recognize')").bind(body.id,body.lease,now()-240).first<{screenshot_json:string}>();
+      if(!job)return json({error:'Late image request'},409);
+      const manifest=parseManifest(job.screenshot_json),images=[];
+      for(const image of manifest.images){const object=await runtime().BUCKET?.get(image.key);if(!object)return json({error:'Screenshot unavailable'},503);const bytes=new Uint8Array(await object.arrayBuffer()),info=pngInfo(bytes),sha=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(b=>b.toString(16).padStart(2,'0')).join('');if(bytes.length!==image.size||info.width!==image.width||info.height!==image.height||sha!==image.sha)return json({error:'Screenshot integrity mismatch'},503);let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));images.push({dataUrl:'data:image/png;base64,'+btoa(binary),width:image.width,height:image.height});}
+      return json({images});
+    }
+    if(body.action==='recognitionComplete'&&validId(body.id)&&validId(body.lease)){
+      let recognized=null;try{if(body.recognition!=null)recognized=validateRecognition(body.recognition);}catch{return json({error:'Invalid recognition'},400);}
+      if(!recognized&&typeof body.error!=='string')return json({error:'Empty recognition'},400);
+      const changed=await database().prepare("UPDATE textbook_jobs SET status=?,answer=?,recognition_json=?,error=?,completed_at=?,lease=NULL WHERE id=? AND task_type='recognize' AND status='running' AND lease=? AND leased_at>=? RETURNING id").bind(recognized?'done':'failed',recognized?.question??null,recognized?JSON.stringify(recognized):null,recognized?null:'截图识别失败或超时，请裁剪清晰图片后重试。',now(),body.id,body.lease,now()-240).first();
+      return json({ok:Boolean(changed)},changed?200:409);
     }
     if(body.action==='critiqueClaim'){
       await expireJobs();await expireCritiques();
@@ -52,6 +66,7 @@ export async function POST(request: Request) {
       const refs=references(body.references);
       const job=await database().prepare("SELECT task_type FROM textbook_jobs WHERE id=? AND status='running' AND lease=? AND leased_at>=?").bind(body.id,body.lease,now()-240).first<{task_type:string}>();
       if(!job)return json({error:'Late result'},409);
+      if(job.task_type==='recognize')return json({error:'Wrong task result type'},400);
       let practice=null;
       try{if(answer&&job.task_type==='exam')practice=validatePractice(body.practice,refs.map(r=>r.rank));else if(body.practice!=null)return json({error:'Unexpected practice'},400);}catch{return json({error:'Invalid practice'},400);}
       const changed = await database().prepare(COMPLETE_SQL).bind(answer?'done':'failed',answer||null,error||null,now(),Math.max(0,Math.min(240000,Number(body.elapsedMs)||0)),diagnostic.query,diagnostic.route,JSON.stringify(refs),practice?JSON.stringify(practice):null,body.id,body.lease,now()-240).first();
