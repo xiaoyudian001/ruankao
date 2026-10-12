@@ -87,7 +87,8 @@ def visual_payload(question,refs,selected):
 
 def parse_visual_result(raw,ids):
  raw=re.sub(r'<think\b[^>]*>.*?(?:</think\s*>|$)','',raw,flags=re.I|re.S).strip();raw=re.sub(r'^```(?:json)?\s*|\s*```$','',raw).strip()
- value=json.loads(raw)
+ try:value=json.loads(raw)
+ except json.JSONDecodeError as error:raise ValueError('Invalid answer JSON') from error
  if not isinstance(value,dict) or set(value)!={'answer','usedFigureIds'}:raise ValueError('Invalid visual answer')
  answer=value['answer'];used=value['usedFigureIds']
  if not isinstance(answer,str) or not answer.strip() or len(answer)>20000 or re.search(r'<\/?(?:think|script|iframe)\b',answer,re.I):raise ValueError('Invalid visual text')
@@ -97,10 +98,20 @@ def parse_visual_result(raw,ids):
 def serialize_visual_result(raw,ids):
  if not isinstance(raw,str):raise ValueError('Invalid visual response type')
  raw=re.sub(r'<think\b[^>]*>.*?(?:</think\s*>|$)','',raw,flags=re.I|re.S).strip()
- match=re.fullmatch(r'<final_answer>\s*(.*?)\s*</final_answer>\s*<used_figures>\s*(\[[^<>]*\])\s*</used_figures>',raw,flags=re.S)
- if match:
-  value={'answer':match.group(1),'usedFigureIds':json.loads(match.group(2))}
-  encoded=json.dumps(value,ensure_ascii=False)
+ fence=re.fullmatch(r'```(?:json|xml|markdown)?\s*\n(.*?)\n\s*```',raw,flags=re.S)
+ if fence:raw=fence.group(1).strip()
+ if raw.startswith('<final_answer>'):
+  match=re.match(r'<final_answer>\s*(.*?)\s*</final_answer>',raw,flags=re.S)
+  if not match:raise ValueError('Incomplete answer envelope')
+  tail=raw[match.end():].strip();used=[]
+  if tail:
+   if not tail.startswith('<used_figures>'):raise ValueError('Unexpected answer output')
+   figure=re.fullmatch(r'<used_figures>\s*(.*?)\s*</used_figures>',tail,flags=re.S)
+   if not figure:raise ValueError('Incomplete figure declaration')
+   try:used=json.loads(figure.group(1))
+   except json.JSONDecodeError as error:raise ValueError('Incomplete figure declaration') from error
+  elif ids:raise ValueError('Incomplete figure declaration')
+  encoded=json.dumps({'answer':match.group(1),'usedFigureIds':used},ensure_ascii=False)
  else:encoded=raw
  return json.dumps(parse_visual_result(encoded,ids),ensure_ascii=False)
 

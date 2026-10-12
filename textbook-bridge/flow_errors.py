@@ -11,7 +11,7 @@ def failure_message(error):
   return 'AI 点评返回的格式不完整，自动恢复未成功；答案已保存，请稍后再次点评。'
  if any(s in detail for s in ('Unknown answer citation','Unknown figure','referenced unused evidence')):
   return '模型答案的教材引用未通过校验，请重新提问。'
- if any(s in detail for s in ('Incomplete exam envelope','Invalid exam','Incomplete figure','Unexpected exam','Invalid visual','Empty visual')):
+ if any(s in detail for s in ('Incomplete exam envelope','Incomplete answer envelope','Invalid answer JSON','Unexpected answer output','Invalid exam','Incomplete figure','Unexpected exam','Invalid visual','Empty visual')):
   return '模型返回的答案格式不完整，自动恢复未成功，请重试。'
  if isinstance(error,TimeoutError) or 'TimeoutError' in detail or 'timed out' in detail:
   return '模型作答超时，请稍后重试；题目和已提交的答案会保留。'

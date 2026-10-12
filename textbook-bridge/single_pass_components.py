@@ -92,7 +92,7 @@ class TextbookSingleEvidenceAnswer(Component):
     if is_essay:parsed.pop('practice',None)
     return Message(text=json.dumps(parsed,ensure_ascii=False))
    except ValueError as error:
-    recoverable=any(s in str(error) for s in ('Incomplete exam envelope','Unknown figure','Unknown answer citation','Incomplete figure declaration'))
-    if attempt or not (is_exam or is_essay) or not recoverable or deadline-asyncio.get_running_loop().time()<8:raise
-    system+='\\n上一次输出的格式或来源标记未通过校验。此次简洁作答，完整闭合final_answer，严格使用上方允许的片段编号和原图id，practice写null；不得输出标签外内容，也不得引用用户截图作为教材来源。'
+    recoverable=isinstance(error,json.JSONDecodeError) or any(s in str(error) for s in ('Incomplete exam envelope','Incomplete answer envelope','Invalid answer JSON','Unknown figure','Unknown answer citation','Incomplete figure declaration','Unexpected answer output','Invalid visual answer','Invalid visual text','Invalid visual response type'))
+    if attempt or not recoverable or deadline-asyncio.get_running_loop().time()<8:raise
+    system+='\\n上一次输出的格式或来源标记未通过校验。请对同一个问题和同一份资料重新简洁作答，完整闭合final_answer与used_figures，严格使用上方允许的片段编号和原图id。如果本轮要求practice则写null；未要求则不输出practice。普通文字答案必须写入final_answer，不得输出标签外文字或直接裸输出Markdown。资料未解释所问概念时，在final_answer说明本次证据不足，不编造定义或引用。不得引用用户截图作为教材来源。'
 '''
