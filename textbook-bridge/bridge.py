@@ -142,6 +142,18 @@ class LocalFlow:
             return set(state['retrieval'])==set(FLOW_MODES)
         except Exception:return False
 
+    def essay_ready(self):
+        try:
+            state=json.loads((ROOT/'single-pass-flows.json').read_text(encoding='utf-8'))
+            flow=self.call('/flows/'+state['generation'])
+            code=next(n for n in flow['data']['nodes'] if n['id']=='SingleEvidenceAnswer-SysArch')['data']['node']['template']['code']['value']
+            return 'def essay_system(' in code and 'essayTask' in code
+        except Exception:return False
+
+    def run_essay(self,job):
+        from essays import run_essay
+        return run_essay(self,job)
+
     def retrieve_evidence(self,job,plan,timeout=130):
         from source_references import source_references
         state=json.loads((ROOT/'single-pass-flows.json').read_text(encoding='utf-8'))
@@ -248,8 +260,9 @@ def main():
             else:critique_ready.clear()
             try:
                 conversational=available and local.conversation_ready()
-                cloud({'action':'heartbeat','ready':available,'modes':modes,'conversationReady':conversational,'sourcesReady':sources_ready.is_set(),'critiqueReady':critique_available,'examReady':available,'screenshotReady':available})
-                (ROOT/'status.json').write_text(json.dumps({'updated_at':int(time.time()),'local_ready':available,'connected':True,'modes':modes,'conversation_ready':conversational,'sources_ready':sources_ready.is_set(),'critique_ready':critique_available,'figure_hybrid_ready':figures_ready.is_set(),'structured_ready':structured_ready.is_set(),'single_pass_ready':single_pass_available,'exam_ready':available,'screenshot_ready':available}),encoding='utf-8')
+                essay_available=available and local.essay_ready()
+                cloud({'action':'heartbeat','ready':available,'modes':modes,'conversationReady':conversational,'sourcesReady':sources_ready.is_set(),'critiqueReady':critique_available,'examReady':available,'screenshotReady':available,'essayReady':essay_available})
+                (ROOT/'status.json').write_text(json.dumps({'updated_at':int(time.time()),'local_ready':available,'connected':True,'modes':modes,'conversation_ready':conversational,'sources_ready':sources_ready.is_set(),'critique_ready':critique_available,'figure_hybrid_ready':figures_ready.is_set(),'structured_ready':structured_ready.is_set(),'single_pass_ready':single_pass_available,'exam_ready':available,'screenshot_ready':available,'essay_ready':essay_available}),encoding='utf-8')
             except Exception as error:
                 logging.info('Heartbeat unavailable: %s HTTP=%s',type(error).__name__,getattr(error,'code','n/a'))
                 (ROOT/'status.json').write_text(json.dumps({'updated_at':int(time.time()),'local_ready':available,'connected':False}),encoding='utf-8')
@@ -276,6 +289,7 @@ def main():
                     if not job['question_images']:raise ValueError('Screenshots unavailable')
                 if is_critique:result['result']=local.run_critique(job)
                 elif is_recognition:result['recognition']=local.recognize_screenshots(job)
+                elif job.get('task_type')=='essay':result.update(local.run_essay(job))
                 else:
                     from single_pass import run_single_pass,record_timings
                     answer=run_single_pass(local,job,budget=max(1,220-(time.monotonic()-start)))

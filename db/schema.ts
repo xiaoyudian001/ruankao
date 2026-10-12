@@ -40,6 +40,7 @@ export const textbookJobs = sqliteTable("textbook_jobs", {
   practiceChoice:text('practice_choice'),
   screenshotJson:text('screenshot_json'),
   recognitionJson:text('recognition_json'),
+  taskPayloadJson:text('task_payload_json'),
   retrievalMode: text("retrieval_mode").notNull().default("default"),
   historyJson: text("history_json").notNull().default("[]"),
   retrievalQuery: text("retrieval_query"),
@@ -65,6 +66,7 @@ export const textbookBridge = sqliteTable("textbook_bridge", {
   critiqueReady: integer("critique_ready").notNull().default(0),
   examReady:integer('exam_ready').notNull().default(0),
   screenshotReady:integer('screenshot_ready').notNull().default(0),
+  essayReady:integer('essay_ready').notNull().default(0),
 });
 
 export const textbookPages = sqliteTable("textbook_pages", {
@@ -111,3 +113,10 @@ export const textbookCaseQuestions=sqliteTable('textbook_case_questions',{
 export const textbookCaseAttempts=sqliteTable('textbook_case_attempts',{
  id:text('id').primaryKey(),questionId:text('question_id').notNull(),ownerId:text('owner_id').notNull(),response:text('response').notNull(),createdAt:integer('created_at').notNull(),
 },t=>[index('case_attempts_owner_question').on(t.ownerId,t.questionId,t.createdAt)]);
+
+export const textbookEssays=sqliteTable('textbook_essays',{
+ id:text('id').primaryKey(),ownerId:text('owner_id').notNull(),title:text('title').notNull(),topic:text('topic').notNull(),requirements:text('requirements').notNull(),projectFacts:text('project_facts').notNull(),draftsJson:text('drafts_json').notNull(),version:integer('version').notNull().default(0),lastSaveId:text('last_save_id'),createdAt:integer('created_at').notNull(),updatedAt:integer('updated_at').notNull(),
+},t=>[index('essays_owner_updated').on(t.ownerId,t.updatedAt)]);
+export const textbookEssayRuns=sqliteTable('textbook_essay_runs',{
+ id:text('id').primaryKey(),ownerId:text('owner_id').notNull(),essayId:text('essay_id').notNull(),essayVersion:integer('essay_version').notNull(),kind:text('kind').notNull(),section:text('section').notNull(),payloadJson:text('payload_json').notNull(),createdAt:integer('created_at').notNull(),
+},t=>[index('essay_runs_owner_essay').on(t.ownerId,t.essayId,t.createdAt)]);

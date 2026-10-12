@@ -71,6 +71,13 @@
       "when": 1791774311095,
       "tag": "0009_careful_supernaut",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1791783138014,
+      "tag": "0010_tricky_plazm",
+      "breakpoints": true
     }
   ]
 }

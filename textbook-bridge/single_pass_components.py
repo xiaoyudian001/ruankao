@@ -4,6 +4,7 @@ from pathlib import Path
 from figures import SYSTEM,parse_visual_result,serialize_visual_result
 from exam import EXAM_SYSTEM,question_kind,exam_system,reconcile_sources,validate_practice,parse_generation,serialize_generation
 from screenshots import RECOGNITION_SYSTEM,parse_recognition,validate_question_images
+from essays import validate_essay_task,essay_system
 
 HERE=Path(__file__).resolve().parent.parent/'sysarch-fullbook'
 PURE='\n'.join((HERE/n).read_text(encoding='utf-8') for n in ['citation_format.py','source_references.py']).replace('from citation_format import source_hint\n','')
@@ -32,7 +33,7 @@ from langchain_core.messages import SystemMessage,HumanMessage
 from lfx.custom import Component
 from lfx.io import MessageTextInput,HandleInput,Output
 from lfx.schema.message import Message
-'''+ 'EXAM_SYSTEM='+repr(EXAM_SYSTEM)+'\n'+inspect.getsource(question_kind)+'\n'+inspect.getsource(exam_system)+'\n'+inspect.getsource(reconcile_sources)+'\n'+inspect.getsource(parse_visual_result)+'\n'+inspect.getsource(serialize_visual_result)+'\n'+inspect.getsource(validate_practice)+'\n'+inspect.getsource(parse_generation)+'\n'+inspect.getsource(serialize_generation)+'\n'+inspect.getsource(parse_recognition)+'\n'+inspect.getsource(validate_question_images)+'''
+'''+ 'EXAM_SYSTEM='+repr(EXAM_SYSTEM)+'\n'+inspect.getsource(validate_essay_task)+'\n'+inspect.getsource(essay_system)+'\n'+inspect.getsource(question_kind)+'\n'+inspect.getsource(exam_system)+'\n'+inspect.getsource(reconcile_sources)+'\n'+inspect.getsource(parse_visual_result)+'\n'+inspect.getsource(serialize_visual_result)+'\n'+inspect.getsource(validate_practice)+'\n'+inspect.getsource(parse_generation)+'\n'+inspect.getsource(serialize_generation)+'\n'+inspect.getsource(parse_recognition)+'\n'+inspect.getsource(validate_question_images)+'''
 class TextbookSingleEvidenceAnswer(Component):
  display_name="教材一次作答 · 正文或原页"
  description="证据准备完成后，按是否有原页调用一个MiniMax模型句柄。"
@@ -56,6 +57,13 @@ class TextbookSingleEvidenceAnswer(Component):
    system=data['textPrompt']+"\\n只按以下格式输出，不输出think或标签外内容：<final_answer>Markdown中文答案</final_answer><used_figures>[]</used_figures>。答案正文不需要JSON转义，引用仅使用本轮提供的片段编号。"
    content=data['answerContext'];model=self.text_model
   is_exam=data.get('taskType') in ('exam','case')
+  is_essay=data.get('taskType')=='essay'
+  if is_essay:
+   if data['images'] or question_images:raise ValueError('Unexpected essay image')
+   task=validate_essay_task(data.get('essayTask'))
+   system=essay_system(task['kind']);model=self.text_model
+   material=[{'citation':'[片段'+str(r['rank'])+']','source':r['label'],'content':r['content']} for r in data['references']]
+   content=json.dumps({'training':task,'textbookMaterials':material},ensure_ascii=False)
   if is_exam:
    system=exam_system(data['answerContext'],data.get('taskType')=='case')
    material=[{'citation':'[片段'+str(r['rank'])+']','source':r['label'],'content':r['content']} for r in data['references']]
@@ -78,12 +86,13 @@ class TextbookSingleEvidenceAnswer(Component):
    result=await asyncio.wait_for(model.ainvoke([SystemMessage(content=system),HumanMessage(content=content)]),timeout=max(0.1,deadline-asyncio.get_running_loop().time()))
    if data.get('taskType')=='recognize':return Message(text=json.dumps(parse_recognition(result.content),ensure_ascii=False))
    try:
-    parsed=json.loads(serialize_generation(result.content,ids,ranks,is_exam))
+    parsed=json.loads(serialize_generation(result.content,ids,ranks,is_exam or is_essay))
     parsed=reconcile_sources(parsed,data['references'],ids)
     if is_exam and (data.get('taskType')=='case' or question_kind(data['answerContext'])!='choice'):parsed['practice']=None
+    if is_essay:parsed.pop('practice',None)
     return Message(text=json.dumps(parsed,ensure_ascii=False))
    except ValueError as error:
     recoverable=any(s in str(error) for s in ('Incomplete exam envelope','Unknown figure','Unknown answer citation','Incomplete figure declaration'))
-    if attempt or not is_exam or not recoverable or deadline-asyncio.get_running_loop().time()<8:raise
+    if attempt or not (is_exam or is_essay) or not recoverable or deadline-asyncio.get_running_loop().time()<8:raise
     system+='\\n上一次输出的格式或来源标记未通过校验。此次简洁作答，完整闭合final_answer，严格使用上方允许的片段编号和原图id，practice写null；不得输出标签外内容，也不得引用用户截图作为教材来源。'
 '''
