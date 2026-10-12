@@ -37,6 +37,8 @@ def build_prompt(job):
  system=SYSTEM
  if job['front'].startswith('共享案例背景（资料）：'):
   system+='\n这是案例逐问练习。仅核对当前小问明确要求的核心要点，correct/missing/corrections各最多3条。用户等价概括已表达出含义，即使没有照抄术语或过程，也应视为覆盖。missing只列真正缺失且回答本问必需的内容；无必需遗漏则为空。不能把教材里未被问及的产品线、资产库、复用阶段、隔离区域、设计文档等旁支列为必须得分点。区分核心遗漏和可选深化；可选深化只放suggestion并明确非必需。不能假定案例未给出的业务对象、代码依赖、部署状态或组织条件。参考分析也要核对证据，不能把参考分析中未被本问要求的扩展当作必答点。'
+ system+='\n只根据直接支持本问结论的教材片段判断。类比或主题相近不等于直接证据，例如数据库连接池原理不能充当函数冷启动及预置实例费用的出处。若本问的概念、措施或代价没有直接证据，只在summary说明哪些内容无法核验，不得称其已答对或答错；不足以判断时insufficient_evidence=true，无可核验要点时correct、missing、corrections全部写闭合空容器。不得为无依据要点填写空ranks、0、未知编号或随意选择相关主题片段。suggestion只建议补充直接资料或核对原文，不展开无依据的术语定义或措施。'
+ system+='\n本次允许引用的片段编号：'+json.dumps([r['rank'] for r in refs])+'。反馈精简，summary和suggestion各不超过200字，每个point不超过150字，优先完整闭合所有标签。'
  return {'system':system,'data':json.dumps(data,ensure_ascii=False)}
 
 def parse_rank_list(raw):
@@ -84,6 +86,27 @@ def parse_result(raw,ranks):
    result[key].append({'point':check(p.get('point')),'ranks':list(dict.fromkeys(rr))})
  return result
 
+async def critique_with_recovery(model,job,timeout_seconds=110):
+ """At most two model calls within one deadline; validate all evidence each time."""
+ import asyncio
+ from langchain_core.messages import SystemMessage,HumanMessage
+ prompt=build_prompt(job)
+ refs=job['references_json']
+ if isinstance(refs,str):refs=json.loads(refs)
+ ranks=[r['rank'] for r in refs]
+ deadline=asyncio.get_running_loop().time()+min(110,max(1,timeout_seconds))
+ recoverable=('Incomplete critique envelope','Invalid model JSON','Invalid critique points',
+              'Invalid critique rank notation','Invalid evidence rank','Invalid critique boolean',
+              'Invalid critique object','Invalid critique text','Invalid point')
+ for attempt in range(2):
+  message=await asyncio.wait_for(model.ainvoke([SystemMessage(content=prompt['system']),HumanMessage(content=prompt['data'])]),timeout=max(0.1,deadline-asyncio.get_running_loop().time()))
+  try:
+   if getattr(message,'response_metadata',{}).get('finish_reason')=='length':raise ValueError('Incomplete critique envelope')
+   return parse_result(message.content,ranks)
+  except ValueError as error:
+   if attempt or not any(s in str(error) for s in recoverable) or deadline-asyncio.get_running_loop().time()<8:raise
+   prompt['system']+='\n前一次点评未通过格式或教材引用校验。请重新核对同一份输入，简洁重写并完整输出critique与六个容器标签。每个要点只引用上方允许且直接支持该结论的片段；不能修补或猜测引用编号。无法找到直接依据时，说明无法判断并输出空要点容器及insufficient_evidence=true。不要重复上次无依据的结论，不输出标签外文字。'
+
 COMPONENT_CODE='''
 import asyncio,json
 from langchain_core.messages import SystemMessage,HumanMessage
@@ -101,19 +124,8 @@ class RecallCritique(Component):
  async def build(self)->Message:
   try:job=decode_payload(self.payload)
   except Exception as exc:raise ValueError('Critique input transport failed: '+str(exc)) from exc
-  try:prompt=build_prompt(job)
-  except Exception as exc:raise ValueError('Saved evidence JSON failed: '+str(exc)) from exc
-  refs=job["references_json"]
-  if isinstance(refs,str):refs=json.loads(refs)
-  deadline=asyncio.get_running_loop().time()+110
-  for attempt in range(2):
-   message=await asyncio.wait_for(self.review_model.ainvoke([SystemMessage(content=prompt["system"]),HumanMessage(content=prompt["data"])]),timeout=max(0.1,deadline-asyncio.get_running_loop().time()))
-   try:
-    result=parse_result(message.content,[r["rank"] for r in refs])
-    return Message(text=json.dumps(result,ensure_ascii=False))
-   except ValueError as error:
-    if attempt or not any(s in str(error) for s in ('Incomplete critique envelope','Invalid model JSON')) or deadline-asyncio.get_running_loop().time()<8:raise
-    prompt['system']+='\\n前一次输出格式不完整。请简洁重写，完整输出critique和所有六个容器标签，空要点用闭合空容器；优先完成结构，不输出标签外文字。'
+  result=await critique_with_recovery(self.review_model,job)
+  return Message(text=json.dumps(result,ensure_ascii=False))
 '''
 from pathlib import Path
 COMPONENT_CODE=Path(__file__).read_text(encoding='utf-8').split('\nCOMPONENT_CODE=')[0]+COMPONENT_CODE

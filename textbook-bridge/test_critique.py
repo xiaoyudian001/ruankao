@@ -36,4 +36,55 @@ class CritiqueContract(unittest.TestCase):
   raw='<critique><summary>已覆盖</summary><correct><point><text>通用结构与差异适配</text><ranks>[1], [2]</ranks></point></correct><missing/><corrections/><suggestion>继续练习</suggestion><insufficient_evidence>false</insufficient_evidence></critique>'
   result=parse_result(raw,[1,2]);self.assertEqual(result['correct'][0]['ranks'],[1,2])
   with self.assertRaises(ValueError):parse_result(raw,[1])
+class CritiqueRecovery(unittest.IsolatedAsyncioTestCase):
+ def job(self):return {'front':'共享案例背景（资料）：闲置后请求慢\n当前小问：现象、措施及代价','back':'参考分析','response':'冷启动，预置执行环境，增加费用','references_json':[{'rank':2,'label':'教材页','content':'事务提交与数据库连接池'}]}
+ def valid(self):return '<critique><summary>本轮片段不足以验证冷启动措施。</summary><correct></correct><missing></missing><corrections></corrections><suggestion>补充直接说明函数启动与费用的资料。</suggestion><insufficient_evidence>true</insufficient_evidence></critique>'
+ async def test_invalid_citation_gets_one_rewrite_without_forging_sources(self):
+  from critique import critique_with_recovery
+  from types import SimpleNamespace
+  replies=[self.valid().replace('<correct></correct>','<correct><point><text>未经支持的结论</text><ranks>[99]</ranks></point></correct>'),self.valid()]
+  class Model:
+   messages=[]
+   async def ainvoke(self,messages):self.messages.append(messages);return SimpleNamespace(content=replies.pop(0))
+  model=Model();result=await critique_with_recovery(model,self.job())
+  self.assertEqual(len(model.messages),2);self.assertEqual(result['correct'],[]);self.assertTrue(result['insufficientEvidence'])
+  self.assertEqual(json.loads(model.messages[0][1].content)['response'],self.job()['response'])
+  self.assertIn('[2]',model.messages[1][0].content)
+ async def test_invalid_points_and_incomplete_tags_share_same_recovery(self):
+  from critique import critique_with_recovery
+  from types import SimpleNamespace
+  for bad in [self.valid()[:-11],self.valid().replace('<missing></missing>','<missing>[]</missing>')]:
+   replies=[bad,self.valid()]
+   class Model:
+    calls=0
+    async def ainvoke(self,messages):self.calls+=1;return SimpleNamespace(content=replies.pop(0))
+   model=Model();result=await critique_with_recovery(model,self.job());self.assertEqual(model.calls,2);self.assertTrue(result['insufficientEvidence'])
+ async def test_second_invalid_citation_still_fails_never_renumbers_it(self):
+  from critique import critique_with_recovery
+  from types import SimpleNamespace
+  bad=self.valid().replace('<correct></correct>','<correct><point><text>无依据</text><ranks>[]</ranks></point></correct>')
+  class Model:
+   calls=0
+   async def ainvoke(self,messages):self.calls+=1;return SimpleNamespace(content=bad)
+  model=Model()
+  with self.assertRaisesRegex(ValueError,'Invalid evidence rank'):await critique_with_recovery(model,self.job())
+  self.assertEqual(model.calls,2)
+ async def test_valid_feedback_calls_model_once(self):
+  from critique import critique_with_recovery
+  from types import SimpleNamespace
+  valid=self.valid()
+  class Model:
+   calls=0
+   async def ainvoke(self,messages):self.calls+=1;return SimpleNamespace(content=valid)
+  model=Model();await critique_with_recovery(model,self.job());self.assertEqual(model.calls,1)
+ async def test_timeout_does_not_start_an_extra_call(self):
+  import asyncio
+  from critique import critique_with_recovery
+  class Model:
+   calls=0
+   async def ainvoke(self,messages):self.calls+=1;await asyncio.sleep(2)
+  model=Model()
+  with self.assertRaises(TimeoutError):await critique_with_recovery(model,self.job(),timeout_seconds=1)
+  self.assertEqual(model.calls,1)
+
 if __name__=='__main__':unittest.main()

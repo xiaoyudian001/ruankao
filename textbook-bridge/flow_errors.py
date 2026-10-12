@@ -5,6 +5,10 @@ def failure_message(error):
  detail=str(error)
  if isinstance(error,HTTPError):
   detail=error.read(16000).decode('utf-8',errors='replace')
+ if 'Invalid evidence rank' in detail or 'Invalid critique rank notation' in detail:
+  return 'AI 点评的教材引用未通过校验，自动恢复未成功；答案已保存，请重试或核对资料。'
+ if any(s in detail for s in ('Incomplete critique envelope','Invalid critique points','Invalid critique boolean','Invalid critique object','Invalid critique text','Invalid model JSON')):
+  return 'AI 点评返回的格式不完整，自动恢复未成功；答案已保存，请稍后再次点评。'
  if any(s in detail for s in ('Unknown answer citation','Unknown figure','referenced unused evidence')):
   return '模型答案的教材引用未通过校验，请重新提问。'
  if any(s in detail for s in ('Incomplete exam envelope','Invalid exam','Incomplete figure','Unexpected exam','Invalid visual','Empty visual')):

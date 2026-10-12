@@ -301,7 +301,7 @@ def main():
                 from flow_errors import failure_message
                 message=failure_message(error)
                 logging.info('Flow failed %s: %s HTTP=%s category=%s',job['id'],type(error).__name__,getattr(error,'code','n/a'),message)
-                result['error']='AI 点评执行失败，请稍后重试。' if is_critique else message
+                result['error']=message
             result['elapsedMs']=int((time.monotonic()-start)*1000)
             # Retry only delivery of an already-generated result, never the model execution.
             for attempt in range(3):
