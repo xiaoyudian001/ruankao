@@ -24,6 +24,9 @@ SYSTEM='''你是系统架构教材的回忆练习和案例问答助教。只使�
 只输出严格 JSON 对象，无 Markdown 代码块、无 think，无额外字段：
 {"summary":"简短中文整体反馈","correct":[{"point":"已掌握要点","ranks":[1]}],"missing":[{"point":"遗漏要点","ranks":[1]}],"corrections":[{"point":"用户错误及依据的纠正","ranks":[1]}],"suggestion":"下一次回忆时如何练习","insufficientEvidence":false}
 三个数组允许为空、各最多8条。每条point最多1500字，summary和suggestion最多1500字。使用中文。'''
+SYSTEM=SYSTEM.split('只输出严格 JSON 对象',1)[0]+'''只输出以下标签结构，无think、代码块或标签外文字。文本标签直接写中文，不需要JSON转义引号、反斜杠和换行。ranks必须是本轮有效编号的JSON整数数组；insufficient_evidence只写true或false。correct/missing/corrections可为空，每类最多8个point。
+<critique><summary>整体反馈</summary><correct><point><text>已答对要点</text><ranks>[1]</ranks></point></correct><missing><point><text>遗漏要点</text><ranks>[1]</ranks></point></missing><corrections><point><text>错误及纠正</text><ranks>[1]</ranks></point></corrections><suggestion>补充建议</suggestion><insufficient_evidence>false</insufficient_evidence></critique>
+各文本最多1500字，不输出官方分数。空的要点容器写成<missing></missing>等。'''
 
 def build_prompt(job):
  refs=job.get('references_json',[])
@@ -39,8 +42,21 @@ def build_prompt(job):
 def parse_result(raw,ranks):
  text=re.sub(r'<think\b[^>]*>.*?(?:</think\s*>|$)','',raw,flags=re.I|re.S).strip()
  if text.startswith('```'):text=re.sub(r'^```(?:json)?\s*|\s*```$','',text).strip()
- try:value=json.loads(text)
- except json.JSONDecodeError as exc:raise ValueError('Invalid model JSON at character '+str(exc.pos)) from exc
+ if text.startswith('<critique>'):
+  tags=['summary','correct','missing','corrections','suggestion','insufficient_evidence']
+  pattern=r'<critique>\s*'+r'\s*'.join('<'+tag+r'>(.*?)</'+tag+'>' for tag in tags)+r'\s*</critique>'
+  matched=re.fullmatch(pattern,text,flags=re.S)
+  if not matched:raise ValueError('Incomplete critique envelope')
+  fields=dict(zip(tags,matched.groups()));value={'summary':fields['summary'],'suggestion':fields['suggestion']}
+  if fields['insufficient_evidence'].strip() not in ('true','false'):raise ValueError('Invalid critique boolean')
+  value['insufficientEvidence']=fields['insufficient_evidence'].strip()=='true'
+  point_pattern=r'<point>\s*<text>(.*?)</text>\s*<ranks>(.*?)</ranks>\s*</point>'
+  for key in ('correct','missing','corrections'):
+   if re.sub(point_pattern,'',fields[key],flags=re.S).strip():raise ValueError('Invalid critique points')
+   value[key]=[{'point':point,'ranks':json.loads(rr)} for point,rr in re.findall(point_pattern,fields[key],flags=re.S)]
+ else:
+  try:value=json.loads(text)
+  except json.JSONDecodeError as exc:raise ValueError('Invalid model JSON at character '+str(exc.pos)) from exc
  def check(s):
   if not isinstance(s,str) or not s.strip() or len(s)>1500 or re.search(r'<\/?(?:think|script|iframe)\b',s,re.I):raise ValueError('Invalid critique text')
   return s.strip()

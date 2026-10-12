@@ -21,4 +21,9 @@ class CritiqueContract(unittest.TestCase):
   self.assertEqual(parse_result('<think>hidden</think>'+json.dumps(sample),[2]),sample)
   with self.assertRaises(ValueError):parse_result(json.dumps(sample),[1])
   with self.assertRaises(ValueError):parse_result('invalid output',[2])
+ def test_tagged_case_feedback_preserves_quotes_and_newlines(self):
+  from critique import parse_result
+  raw='<critique><summary>核对 "业务条件"\n按本问判断</summary><correct><point><text>已说明通用结构</text><ranks>[2]</ranks></point></correct><missing></missing><corrections></corrections><suggestion>可以进一步对比，但非必需。</suggestion><insufficient_evidence>false</insufficient_evidence></critique>'
+  result=parse_result(raw,[2]);self.assertIn('"业务条件"\n',result['summary']);self.assertEqual(result['missing'],[]);self.assertEqual(result['correct'][0]['ranks'],[2])
+  with self.assertRaises(ValueError):parse_result(raw,[1])
 if __name__=='__main__':unittest.main()
