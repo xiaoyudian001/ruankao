@@ -2,7 +2,7 @@
 import json,re
 
 def eligible(question,task_type,selected,question_images=None):
- return task_type=='qa' and not selected and not question_images and not re.search(r'仅(?:根据|依据|按)|只(?:根据|依据|按).*教材|严格依据|逐字|原文全文|不要.*(?:AI|通用知识|教材外)|原图|这张图|图中|(?:图|表)\s*\d+\s*[-－]',question,re.I)
+ return task_type=='qa' and not selected and not question_images and not re.search(r'仅(?:根据|依据|按)|只(?:根据|依据|按).*?(?:教材|原文|本书|书中)|严格依据|逐字|原文全文|不要.*(?:AI|通用知识|教材外)|原图|这张图|图中|(?:图|表)\s*\d+\s*[-－]',question,re.I)
 
 def parse_gate(raw,original):
  if not isinstance(raw,str):raise ValueError('Invalid QA coverage response')

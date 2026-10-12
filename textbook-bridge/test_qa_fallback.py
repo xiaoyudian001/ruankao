@@ -28,7 +28,7 @@ class QAFallbackTests(unittest.TestCase):
   local.retrieve_evidence.assert_called_once();local.generate_evidence.assert_called_once();self.assertNotIn('AI 知识补充',result['answer'])
  def test_case_and_visual_questions_do_not_use_general_fallback(self):
   self.module();from single_pass import run_single_pass
-  for job,visual in [({**self.job(),'task_type':'case'},([],{},[])),(self.job(),([{'id':'a'*64}],{},[])),({**self.job(),'question':'仅根据教材原文解释RTO与RPO'},([],{},[]))]:
+  for job,visual in [({**self.job(),'task_type':'case'},([],{},[])),(self.job(),([{'id':'a'*64}],{},[])),({**self.job(),'question':'仅根据教材原文解释RTO与RPO'},([],{},[])),({**self.job(),'question':'只根据原文说明RTO与RPO'},([],{},[]))]:
    local=self.local([])
    with patch('single_pass.prepare_visual',return_value=visual):run_single_pass(local,job)
    local.assess_qa.assert_not_called()
