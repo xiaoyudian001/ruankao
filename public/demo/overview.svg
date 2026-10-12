@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 540" role="img" aria-labelledby="title desc">
+  <title id="title">软考 AI 学习助手：三个学习场景</title>
+  <desc id="desc">演示路线示意，非产品截图。问教材后核对原页；练案例后补齐遗漏；写论文后比较修改。公开演示使用自写资料与预录结果，无需登录。</desc>
+  <rect width="1200" height="540" fill="#f4f7fb" rx="20"/>
+  <g font-family="Microsoft YaHei, sans-serif">
+    <text x="48" y="58" fill="#173f8a" font-size="14" letter-spacing="3">教材溯源 / 案例练习 / 论文训练</text>
+    <text x="48" y="122" fill="#12284b" font-size="38" font-weight="700">读懂答案，也看清它的依据。</text>
+    <text x="48" y="160" fill="#66758b" font-size="17">公开演示 · 自写资料 · 预录反馈 · 无需登录</text>
+    <g transform="translate(48 205)">
+      <rect width="352" height="248" rx="16" fill="white" stroke="#d7e0ec"/>
+      <rect width="352" height="7" rx="3" fill="#173f8a"/>
+      <text x="24" y="42" fill="#66758b" font-size="13">01 / 问教材</text>
+      <text x="24" y="83" fill="#12284b" font-size="23" font-weight="700">订单操作能全部异步吗？</text>
+      <text x="24" y="121" fill="#475569" font-size="16">区分业务承诺，再讨论方案。</text>
+      <rect x="24" y="143" width="304" height="42" rx="8" fill="#eff6ff"/>
+      <text x="38" y="170" fill="#173f8a" font-size="16">[片段1] → 核对自写原页</text>
+      <text x="24" y="222" fill="#66758b" font-size="14">结论与依据，一起阅读。</text>
+    </g>
+    <g transform="translate(424 205)">
+      <rect width="352" height="248" rx="16" fill="white" stroke="#d7e0ec"/>
+      <rect width="352" height="7" rx="3" fill="#b38b31"/>
+      <text x="24" y="42" fill="#66758b" font-size="13">02 / 练案例</text>
+      <text x="24" y="83" fill="#12284b" font-size="23" font-weight="700">先作答，再看遗漏。</text>
+      <text x="24" y="121" fill="#475569" font-size="16">初次作答 → 点评 → 补充稿</text>
+      <rect x="24" y="143" width="304" height="42" rx="8" fill="#fffbeb"/>
+      <text x="38" y="170" fill="#805c16" font-size="16">补充复用边界与决策理由</text>
+      <text x="24" y="222" fill="#66758b" font-size="14">反馈与当次稿件对应。</text>
+    </g>
+    <g transform="translate(800 205)">
+      <rect width="352" height="248" rx="16" fill="white" stroke="#d7e0ec"/>
+      <rect width="352" height="7" rx="3" fill="#3e7265"/>
+      <text x="24" y="42" fill="#66758b" font-size="13">03 / 写论文</text>
+      <text x="24" y="83" fill="#12284b" font-size="23" font-weight="700">让修改有事实依据。</text>
+      <text x="24" y="121" fill="#475569" font-size="16">项目材料 → 提纲 → 逐段修改</text>
+      <rect x="24" y="143" width="304" height="42" rx="8" fill="#edf6f2"/>
+      <text x="38" y="170" fill="#315e51" font-size="16">不把计划写成已完成的结果</text>
+      <text x="24" y="222" fill="#66758b" font-size="14">比较初稿与修改稿的点评。</text>
+    </g>
+    <text x="48" y="499" fill="#66758b" font-size="14">演示路线示意 · 非产品截图 / 真实功能需自行配置教材与本机服务</text>
+  </g>
+</svg>

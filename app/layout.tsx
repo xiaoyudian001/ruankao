@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "软考 40 天冲刺",
-  description: "系统架构设计师复习监督、每日打卡与资料题库管理",
+  title: "软考 AI 学习助手",
+  description: "系统架构设计师备考：教材溯源、案例练习、论文训练与40天复习计划",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

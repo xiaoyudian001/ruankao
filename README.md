@@ -1,178 +1,124 @@
-# 软考 40 天冲刺
+# 软考 AI 学习助手
 
-## 本次新增：论文写作训练
+**教材溯源 · 案例练习 · 论文训练**
 
-新增 `/essays`：保存真实项目经历，生成切题提纲，按五个段落写作与点评，修改后再次提交，并保留材料与原稿快照。详见[论文训练说明](docs/essay-training.zh-CN.md)。
+面向系统架构设计师备考的 AI 学习工作台：回答附可点击的教材原页，案例先自己作答再看点评，论文基于真实项目经历逐段修改。
 
-## 多题型解析与案例逐问练习
+**[立即体验公开演示](https://ruankao-40-day.xiaoydian.chatgpt.site/demo)** · [快速开始](#快速开始) · [功能清单](docs/features.zh-CN.md) · [反馈问题](https://github.com/xiaoyudian001/ruankao/issues)
 
-题目解析现在按选择、问答、案例、计算、判断、填空等实际题型组织答案。新增 `/cases` 案例练习：共享背景、逐问先答后看、教材依据点评、蓝色出处引用及修改后再次点评。详细操作与机制见[案例练习说明](docs/case-study.zh-CN.md)。
+![三个学习场景的演示路线示意：问教材核对来源、练案例补齐遗漏、写论文比较修改前后。此图为示意图，并非产品截图。](public/demo/overview.svg)
 
-面向系统架构设计师备考的学习工作台，将教材检索、图文问答、题目解析和主动回忆练习接到同一个网页中。
+*上图为演示路线示意。公开页面无需登录，使用自写资料、合成项目和预录反馈；电脑离线时也能浏览，不提供公共实时问答。*
 
-- **在线地址**：[复习总览](https://ruankao-40-day.xiaoydian.chatgpt.site/) · [教材问答](https://ruankao-40-day.xiaoydian.chatgpt.site/textbook) · [复习中心](https://ruankao-40-day.xiaoydian.chatgpt.site/review)
-- **功能基线**：已发布的网站第 21 版，更新于 2026-10-12。
-- **回答模型**：沿用本机 Langflow 配置的 MiniMax-M3。ChatGPT 登录负责身份验证，教材答案由 MiniMax 生成。
-- **部署方式**：网页和学习记录运行在云端；教材、向量库与检索流程运行在本机。电脑联网并启动连接器后，可以在网页中发起新的问答。
+**English:** A study workspace for China's System Architect exam, with source-linked RAG answers, case practice and essay revision. The public demo uses authored sample notes and prerecorded feedback. Live features require a self-hosted connector and your own materials. [Deployment guide (Chinese)](docs/setup.zh-CN.md).
 
-## 已实现的功能
+## 三个场景，先体验再看实现
 
-| 模块 | 当前能力 |
+### 1. 问教材：结论可以回到原页
+
+在真实实例中，问题经教材检索后交给 MiniMax 生成回答，蓝色引用打开原 PDF 页与检索文本，同时显示教材印刷页码和 PDF 物理页码。
+
+**演示操作**：打开[教材问答演示](https://ruankao-40-day.xiaoydian.chatgpt.site/demo)，阅读“订单写入和通知发送，可以都改成异步吗？”，点击片段引用核对自写原页。
+
+### 2. 练案例：先作答，再补齐遗漏
+
+共享同一段背景，逐问提交自己的答案，再查看答对、遗漏和概念错误。修改后可以再次点评，材料与原稿快照保留在训练记录中。
+
+**演示操作**：切换“案例练习”，提交初次作答，阅读反馈；再提交补充后的示例答案，比较两次点评。演示稿固定，不对访客自由输入伪装评分。
+
+### 3. 写论文：把项目事实与技术理由写清楚
+
+保存真实项目材料，生成切题提纲，分别练习摘要、背景与职责、架构方案、实施过程和总结。点评会提示缺少的事实和技术论证，修改后再次提交保留历史版本。
+
+**演示操作**：切换“论文训练”，展开提纲，比较初稿与修改稿。合成经历不能代替真实项目，不提供官方分数或通过率预测。
+
+## 当前能力
+
+| 模块 | 已实现 |
 | --- | --- |
-| 40 天复习总览 | 六阶段复习路线、每日打卡、学习时长与刷题数统计、今日卡片复习任务 |
-| 资料管理 | 上传、分类、下载和删除学习资料，单文件上限 25 MB |
-| 教材问答 | 从教材检索证据，生成解释、例子及可点击的片段引用 |
-| 完整检索实验 | 按需拆分复杂问题，语义召回与 BM25 关键词召回，经 RRF 融合、本地重排和上下文扩展后作答 |
-| 多轮追问 | 使用同一会话最近 3 轮已完成问答补全追问；无法确定对象时请求澄清 |
-| 来源核对 | 同时显示教材印刷页码与 PDF 物理页码；蓝色引用打开原页及检索文本，侧栏支持返回聊天 |
-| 教材图文问答 | 按图号或描述检索架构图、流程图，以及相关表格、公式原页；只展示模型实际采用的教材原页 |
-| 文字题解析 | 粘贴题干及选项，查看答案、解题思路、逐项解释和教材依据 |
-| 截图识题 | 上传或粘贴同一道题的最多两张截图；先核对识别文字，再携带原图解析 |
-| 类似练习 | 原题解析后按证据生成一道辅助单选题；提交选项后才显示答案和解析，刷新保留作答结果 |
-| 答案收藏 | 保存回答与来源快照，制作可编辑的问答卡片 |
-| 主动回忆 | 先自行作答，再揭晓参考答案并自评；按 1、3、7、14 天间隔安排复习 |
-| AI 回忆点评 | 基于原收藏的教材证据说明答对、遗漏和需要纠正的内容，保存点评记录 |
+| 教材 RAG | 语义检索；完整模式结合 BM25、RRF、本地重排与上下文扩展 |
+| 来源核对 | 蓝色引用、教材/PDF 双页码、原页与证据文本并排查看 |
+| 图文问答 | 图示、表格及公式原页检索，读取相关原图后回答 |
+| 多题型解析 | 选择、问答、案例、计算、判断、填空；支持核对后的题目截图 |
+| 案例与论文 | 先答后评、修改再评、版本快照和教材依据 |
+| 复习闭环 | 答案收藏、复习卡片、主动回忆、自评与 AI 点评 |
+| 40 天计划 | 每日打卡、阶段路线、学习时长与刷题统计 |
 
-详细范围和限制见 [功能清单](docs/features.zh-CN.md)。案例逐问训练已实现；按官方评分细则精确计分尚未实现；论文提纲与分段写作训练已实现。
+详细范围与限制见[功能清单](docs/features.zh-CN.md)。公开源码不包含教材、OCR 全文、向量数据、模型权重、用户记录或真实密钥。
 
-## 三个常用入口
+## 快速开始
 
-### 教材问答
+### 只想了解产品
 
-进入 `/textbook`，选择“教材问答”，输入完整问题。可选择“当前问答”或“完整检索实验”。答案中的片段引用可打开原 PDF 页核对。
+直接打开[公开演示](https://ruankao-40-day.xiaoydian.chatgpt.site/demo)。不需要安装、不需要登录，也不会调用你的模型账号。[演示说明](docs/public-demo.zh-CN.md)
 
-同会话支持追问，例如先问“什么是 MTBF”，再问“它与 MTTR 有什么区别”。新建会话会清空追问上下文。检索问题可在答案下方展开查看。
+### 本地查看前端与演示
 
-### 真题解析与截图识题
+需要 Node.js >=22.13.0 和 pnpm@11.25.0：
 
-1. 选择“真题解析”，粘贴题干、小问及必要条件（选择题附全部选项）；也可上传或粘贴 PNG、JPEG、WebP 截图。
-2. 图片输入一次只处理一道题，最多两张。浏览器转为 PNG，每张转换后不超过 2 MB。
-3. 点击“识别题目”，检查输入框中的文字，尤其是否定词、数字、公式和选项。
-4. 点击“我已核对文字，保留原图解析”，再发送。原题图表会随经核对的文字一起进入图文模型。
-5. 查看解析与教材引用；有类似练习时，先选择选项，再提交查看解释。
-
-原题截图可从历史回答中的“查看原题截图”回看。没有提供标准答案时，原题答案属于模型判断；生成的类似题是 AI 辅助练习，不是历年真题。
-
-### 复习闭环
-
-`答案收藏 → 复习卡片 → 主动回忆 → 自评或 AI 点评 → 40 天复习计划`
-
-收藏内容与卡片存储在 D1。已保存的内容和自评练习可以在电脑离线时查看；新问答、AI 点评和未缓存的原页仍需要本机服务在线。
-
-## 实现机制
-
-### 问答链路
-
-`网页提交问题 → 云端任务队列 → 本机连接器领取 → Langflow 检索证据 → MiniMax 生成答案 → 校验引用并清理输出 → 云端保存 → 网页显示`
-
-- **向量化**：Ollama 的 `bge-m3:latest` 在本机生成文本向量。
-- **向量库**：Langflow 管理的 Chroma Local 知识库；当前教材库为 `SysArchTutorRAGv3`。
-- **混合检索**：完整模式结合语义检索与 BM25，用 RRF 合并排名，再通过本地 CrossEncoder 重排。
-- **重排模型**：`cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`，从本机模型目录加载。
-- **答案生成**：正文和图文使用同一供应商 MiniMax；通常最终答案生成一次。追问重写、复杂问题规划是独立步骤，可能额外调用模型。
-- **图像预算**：每轮最多两张教材原页；截图题另支持最多两张用户原题截图。原题截图不充当教材引用。
-- **页码来源**：程序维护页码元数据，模型不能自行推算页码。跨页分片保留完整来源范围。
-
-图示索引使用图题、章节和同页正文的文本向量，不能等同于将原图像素直接写入向量库。模型实际读取图片发生在相关原页被选中之后。
-
-### 连接方式
-
-连接器只主动向固定网站发起 HTTPS 请求。本项目没有把本机 Langflow 或 Ollama 的端口直接公开到互联网。
-
-队列使用任务类型、领取租约和过期检查；问答、截图识别与点评共享任务互斥规则。回传失败只重试结果交付，避免因网络重试重复生成答案。截图只能由所有者读取，本机桥接只能在有效任务租约内取得对应原图。
-
-详细说明见 [本机运行与部署](docs/setup.zh-CN.md) 及 [一次答案生成](docs/local-connector/single-answer.md)。
-
-## 技术栈
-
-| 部分 | 使用的工具 |
-| --- | --- |
-| 网页 | TypeScript、React、Vinext、Vite、Tailwind CSS |
-| 云端运行 | Cloudflare Workers，由 Sites 发布 |
-| 结构化数据 | Cloudflare D1、Drizzle ORM |
-| 文件存储 | Cloudflare R2 |
-| 流程编排 | IBM Langflow Desktop |
-| 嵌入与检索 | Ollama BGE-M3、Chroma Local、BM25、RRF |
-| 本地重排 | Transformers / PyTorch CrossEncoder |
-| 文档处理 | Docling、RapidOCR、PDF 渲染与清理脚本 |
-| 回答和图文识别 | MiniMax-M3 |
-| 本机连接 | Python、Windows PowerShell、DPAPI 加密配置 |
-
-## 源码目录
-
-```text
-app/                    网页、聊天、复习中心与 API
-lib/textbook/           问答、来源、题目、截图等数据契约
-lib/review/             卡片排期、复习与点评逻辑
-db/                     Drizzle 表结构
-drizzle/                按顺序追加的数据库迁移
-textbook-bridge/        本机连接、图文生成、流程设置与验证源码
-sysarch-fullbook/       教材解析、清理、检索、重排和引用处理源码
-docs/local-connector/   各阶段实现说明与连接器源码快照
-docs/superpowers/       功能设计及实施记录
-scripts/                前端运行和构建脚本
-tests/                  网页契约、实际路由适配及数据库测试
-```
-
-本仓库保存源码，不包含原教材、OCR 全文、向量数据、模型权重、用户上传截图、学习记录或真实密钥。部分本机脚本保留当前部署的 Windows 路径和流程 ID；换机器时需要核对配置，克隆仓库不会自动得到现有 Langflow 流程、知识库或云端数据。
-
-## 前端开发
-
-需要 Node.js `>=22.13.0`，以及与 `package.json` 中 `packageManager` 一致的 pnpm。
-
-```powershell
+~~~sh
+git clone https://github.com/xiaoyudian001/ruankao.git
+cd ruankao
 pnpm install --frozen-lockfile
 pnpm dev
-```
+~~~
 
-默认开发端口为 `5173`。干净克隆默认使用 portable 执行模式；项目不要求为 Windows 前端开发安装 Bash。`install:ci` 是保留的环境专用脚本，不是 Windows 快速开始入口。
+打开 http://localhost:5173/demo 即可体验样例。此步骤启动前端，不等于完成真实教材问答的配置。
 
-```powershell
-pnpm build
-pnpm start
-```
+### 配置自己的真实问答
 
-构建后 `pnpm start` 使用 Wrangler 在本机预览 Worker，不会发布到线上。完整的登录、D1/R2 配置和迁移步骤见 [运行说明](docs/setup.zh-CN.md)。
+网页运行在 Cloudflare Workers，D1/R2 保存记录与文件。本机连接器主动领取任务，调用 Langflow、Ollama 和配置的 MiniMax 服务。当前在线学习空间仅供网站所有者使用；克隆仓库不会取得其数据或访问权限。
 
-原始 Sites/Vinext 模板的运行约定见 [框架说明](docs/framework.zh-CN.md)。
+需自行准备云端绑定、登录与连接配置、Langflow 流程、教材索引、模型和供应商密钥。现有脚本仍含本机路径及固定流程 ID，Python 依赖尚未经过全新机器完整复现。**当前不是一键安装方案。** 逐项配置见[运行与部署说明](docs/setup.zh-CN.md)。
 
-## 验证
+## 一次回答怎样产生
 
-以下命令在项目根目录运行，主要检查数据契约和本地适配器，不会自动把题目写入生产会话：
+~~~text
+网页提问 → 云端队列 → 本机连接器
+  → 教材检索 → MiniMax 生成 → 引用校验与输出清理
+  → 云端保存 → 网页答案与可点击原页
+~~~
 
-```powershell
+- **嵌入与向量库**：Ollama BGE-M3、Langflow 管理的 Chroma Local。
+- **完整检索**：按需拆分复杂问题，结合语义召回与 BM25，RRF 融合，再用 mmarco-mMiniLMv2-L12-H384-v1 重排。
+- **回答与图文**：现有实例使用 MiniMax-M3；ChatGPT 登录用于身份验证。
+- **网络连接**：连接器主动发送 HTTPS 请求，不把本机 Langflow/Ollama 端口直接公开。
+- **网页与存储**：TypeScript、React、Vinext/Vite、Tailwind、Cloudflare Workers/D1/R2。
+
+公开演示只展示固定样例，不经过以上实时链路。深入机制见[项目实现说明](docs/project-details.zh-CN.md)。
+
+## 验证与边界
+
+~~~sh
 node --experimental-strip-types --test tests/*.test.mjs
-node tests/exam-routes.mjs
-node tests/screenshot-routes.mjs
-node tests/critique-routes.mjs
-node tests/exam-render.mjs
-node tests/screenshot-render.mjs
+node tests/demo-render.mjs
+node tests/essay-routes.mjs
+node tests/case-routes.mjs
 python -m unittest discover -s tests -p 'test_*.py'
-```
+~~~
 
-本机连接器测试在准备了 Python 依赖的环境中运行：
+测试覆盖数据契约、实际路由、权限、队列、训练快照和演示渲染。连接器测试及真实模型验证需要另备 Python 环境、模型与资料；私有图示语料相关检查可能跳过。详情见[实现说明](docs/project-details.zh-CN.md#验证)。
 
-```powershell
-python -m unittest discover -s textbook-bridge -p 'test*.py'
-```
+当前限制：
 
-真实模型验证脚本会调用现有 MiniMax 服务；运行前应核对输入、配置和模型费用。教材相关验证需要本机自备教材及索引。本次连接器73项检查中68项通过，5项因公开源码不含私有教材图示目录而跳过。传输测试使用临时模拟流程清单，不需要真实密钥。通过样例不能保证所有题目或所有教材公式都能正确识别。浏览器完整交互验证尚未完成。
+- 真实新问答依赖本机联网与服务在线；公开演示不受这一限制。
+- 教材、训练和复习接口有所有者检查；首页打卡与资料仍是单套共享数据，尚未实现多用户隔离。公开演示不读取这些接口。
+- 回答和点评属于 AI 辅助，识别题干、公式与引用仍应核对，不按官方评分细则精确计分。
+- 复习日历日期仍需按自己的考试周期调整。
+- 完整浏览器交互验证尚未完成。源码公开不等于已完成新机器部署验证。
 
-## 当前边界
+## 文档导航
 
-- 新答案依赖电脑联网、连接器、Langflow 和 Ollama；开机自动启动发生在用户登录 Windows 后。
-- 当前复习日历的起始日期和考试日期写在源码中，换考试周期需要调整，页面日期不代表官方考试公告。
-- 教材问答、截图和复习模块有所有者及同源检查；首页打卡和资料接口目前是单套共享数据，尚未实现多用户隔离。
-- 长续表、看不清的公式、缺少选项的题目需要人工核对。无有效证据时不保证生成类似练习。
-- 用户原题图文会发送给配置的 MiniMax 服务；教材正文向量化和本地重排在本机完成。
-- 项目未单独声明开源许可证。第三方组件的许可证保留在相应目录；教材、模型权重及第三方服务的使用条件应分别确认。
-
-## 相关文档
-
+- [公开演示与分享](docs/public-demo.zh-CN.md)
 - [功能清单](docs/features.zh-CN.md)
-- [本机运行与部署](docs/setup.zh-CN.md)
-- [框架说明](docs/framework.zh-CN.md)
-- [原图问答](docs/local-connector/figures.md)
-- [表格与公式问答](docs/local-connector/structured.md)
-- [真题解析](docs/local-connector/exam-analysis.md)
-- [截图识题](docs/local-connector/screenshots.md)
+- [本地运行与部署](docs/setup.zh-CN.md)
+- [案例逐问练习](docs/case-study.zh-CN.md)
+- [论文写作训练](docs/essay-training.zh-CN.md)
+- [详细机制、目录与测试](docs/project-details.zh-CN.md)
+- [框架运行说明](docs/framework.zh-CN.md)
+
+## 参与与许可
+
+欢迎通过 [Issues](https://github.com/xiaoyudian001/ruankao/issues) 提交可复现问题。请附输入示例、运行环境和脱敏错误信息；不要上传真实密钥、个人项目材料或未经许可的教材。
+
+项目尚未单独声明代码许可证，因此目前不宣称为具有明确许可的开源发行版。第三方组件声明保留在相应目录；教材、模型和服务的条件分别适用。许可证、脱敏流程模板与新机器安装验证是后续发布准备事项。
