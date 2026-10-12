@@ -15,3 +15,9 @@ test('rewrite diagnostics reject invalid routes and preserve only plain bounded 
   assert.throws(()=>rewriteDiagnostic({retrievalQuery:'x'.repeat(2001),rewriteRoute:'direct'}));
   assert.deepEqual(rewriteDiagnostic({}),{query:null,route:null});
 });
+test('internal case diagnostics retain the full shared context with a bounded explicit limit',()=>{
+ const value={retrievalQuery:'背景'.repeat(1800)+'当前小问',rewriteRoute:'direct'};
+ assert.equal(rewriteDiagnostic(value,6000).query,value.retrievalQuery);
+ assert.throws(()=>rewriteDiagnostic(value));
+ assert.throws(()=>rewriteDiagnostic({...value,retrievalQuery:'x'.repeat(6001)},6000));
+});

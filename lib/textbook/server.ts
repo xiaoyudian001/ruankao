@@ -41,5 +41,5 @@ export const COMPLETE_SQL = `UPDATE textbook_jobs SET status=?, answer=?, error=
 WHERE id=? AND status='running' AND lease=? AND leased_at >= ? RETURNING id`;
 
 export const HISTORY_SQL = `SELECT question,answer FROM textbook_jobs
-WHERE owner_id=? AND session_id=? AND status='done' AND answer IS NOT NULL AND task_type!='recognize'
+WHERE owner_id=? AND session_id=? AND status='done' AND answer IS NOT NULL AND task_type IN ('qa','exam')
 ORDER BY created_at DESC,rowid DESC LIMIT 3`;

@@ -62,11 +62,11 @@ export async function POST(request: Request) {
       const answer = typeof body.answer === 'string' ? cleanAnswer(body.answer).slice(0,60000) : '';
       const error = typeof body.error === 'string' ? body.error.slice(0,300) : '';
       if (!answer && !error) return json({error:'Empty result'},400);
-      const diagnostic=rewriteDiagnostic(body);
       const refs=references(body.references);
       const job=await database().prepare("SELECT task_type FROM textbook_jobs WHERE id=? AND status='running' AND lease=? AND leased_at>=?").bind(body.id,body.lease,now()-240).first<{task_type:string}>();
       if(!job)return json({error:'Late result'},409);
       if(job.task_type==='recognize')return json({error:'Wrong task result type'},400);
+      const diagnostic=rewriteDiagnostic(body,job.task_type==='case'?6000:2000);
       let practice=null;
       try{if(answer&&job.task_type==='exam')practice=validatePractice(body.practice,refs.map(r=>r.rank));else if(body.practice!=null)return json({error:'Unexpected practice'},400);}catch{return json({error:'Invalid practice'},400);}
       const changed = await database().prepare(COMPLETE_SQL).bind(answer?'done':'failed',answer||null,error||null,now(),Math.max(0,Math.min(240000,Number(body.elapsedMs)||0)),diagnostic.query,diagnostic.route,JSON.stringify(refs),practice?JSON.stringify(practice):null,body.id,body.lease,now()-240).first();

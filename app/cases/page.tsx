@@ -1,0 +1,11 @@
+import Link from 'next/link';
+import {requireChatGPTUser} from '../chatgpt-auth';
+import {isOwner} from '../../lib/textbook/policy';
+import {runtime} from '../../lib/textbook/server';
+import CaseStudy from './case-study';
+export const dynamic='force-dynamic';
+export default async function CasePage(){
+ const user=await requireChatGPTUser('/cases');
+ if(!isOwner(user,runtime().RAG_OWNER_EMAIL??''))return <main className="mx-auto max-w-xl px-6 py-20"><h1 className="text-2xl font-bold">案例练习仅供网站所有者使用</h1><Link href="/" target="_top" prefetch={false} className="mt-6 inline-block text-blue-800 underline">返回冲刺台</Link></main>;
+ return <CaseStudy/>;
+}

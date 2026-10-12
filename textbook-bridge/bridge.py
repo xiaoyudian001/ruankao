@@ -165,7 +165,7 @@ class LocalFlow:
         encoded='single-answer-b64-v1:'+base64.b64encode(json.dumps(wire,ensure_ascii=False).encode()).decode()
         body={'input_request':{'input_value':encoded,'input_type':'chat','output_type':'any','output_component':'SingleEvidenceAnswer-SysArch','session_id':'answer-'+job['id'],'tweaks':{'ChatInput-z2rit':{'should_store_message':False}}}}
         output=self.call('/run/session/'+state['generation'],body,timeout=timeout)
-        return parse_generation(visual_text(output),[r['id'] for r in selected],[r['rank'] for r in wire['references']],wire['taskType']=='exam')
+        return parse_generation(visual_text(output),[r['id'] for r in selected],[r['rank'] for r in wire['references']],wire['taskType'] in ('exam','case'))
 
     def recognize_screenshots(self,job):
         from screenshots import recognition_wire
@@ -284,8 +284,10 @@ def main():
                     except OSError as error:logging.info('Timing record unavailable: %s',type(error).__name__)
                     result.update(answer)
             except Exception as error:
-                logging.info('Flow failed %s: %s',job['id'],type(error).__name__)
-                result['error']='AI 点评执行失败，请稍后重试。' if is_critique else '本地问答流程执行失败或超时，请检查 Langflow 和 Ollama 后重试。'
+                from flow_errors import failure_message
+                message=failure_message(error)
+                logging.info('Flow failed %s: %s HTTP=%s category=%s',job['id'],type(error).__name__,getattr(error,'code','n/a'),message)
+                result['error']='AI 点评执行失败，请稍后重试。' if is_critique else message
             result['elapsedMs']=int((time.monotonic()-start)*1000)
             # Retry only delivery of an already-generated result, never the model execution.
             for attempt in range(3):

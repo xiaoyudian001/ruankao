@@ -101,3 +101,13 @@ export const textbookCritiques=sqliteTable('textbook_critiques',{
  status:text('status').notNull().default('queued'),resultJson:text('result_json'),error:text('error'),lease:text('lease'),leasedAt:integer('leased_at'),
  createdAt:integer('created_at').notNull(),completedAt:integer('completed_at'),
 },t=>[index('critiques_owner_card').on(t.ownerId,t.cardId),index('critiques_status').on(t.status,t.createdAt)]);
+
+export const textbookCases=sqliteTable('textbook_cases',{
+ id:text('id').primaryKey(),ownerId:text('owner_id').notNull(),title:text('title').notNull(),background:text('background').notNull(),createdAt:integer('created_at').notNull(),
+},t=>[index('cases_owner_created').on(t.ownerId,t.createdAt)]);
+export const textbookCaseQuestions=sqliteTable('textbook_case_questions',{
+ id:text('id').primaryKey(),caseId:text('case_id').notNull(),ownerId:text('owner_id').notNull(),prompt:text('prompt').notNull(),ordinal:integer('ordinal').notNull(),jobId:text('job_id').notNull(),createdAt:integer('created_at').notNull(),
+},t=>[uniqueIndex('case_question_order').on(t.caseId,t.ordinal),uniqueIndex('case_question_job').on(t.jobId)]);
+export const textbookCaseAttempts=sqliteTable('textbook_case_attempts',{
+ id:text('id').primaryKey(),questionId:text('question_id').notNull(),ownerId:text('owner_id').notNull(),response:text('response').notNull(),createdAt:integer('created_at').notNull(),
+},t=>[index('case_attempts_owner_question').on(t.ownerId,t.questionId,t.createdAt)]);

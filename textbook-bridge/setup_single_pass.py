@@ -46,6 +46,7 @@ def main():
  for n,y in [(text,200),(vision,500)]:
   n['data']['selected_output']='model_output';n['position']={'x':0,'y':y}
   n['data']['node']['template']['input_value']['value']='';n['data']['node']['template']['system_message']['value']=''
+  if n['id']=='SingleVisionModel-SysArch' and 'max_tokens' in n['data']['node']['template']:n['data']['node']['template']['max_tokens']['value']=8192
  chat=copy.deepcopy(next(n for n in source['data']['nodes'] if n['id']=='ChatInput-z2rit'));chat['position']={'x':0,'y':0};chat['data']['node']['template']['should_store_message']['value']=False
  gen=component(api,generation_code(),'SingleEvidenceAnswer-SysArch',{'x':600,'y':0},{})
  data={'nodes':[chat,text,vision,gen],'edges':[edge(chat['id'],'ChatInput','message',['Message'],gen['id'],'payload',['Message'],'str')]+[edge(n['id'],n['data']['type'],'model_output',['LanguageModel'],gen['id'],field,['LanguageModel'],'other') for n,field in [(text,'text_model'),(vision,'vision_model')]]}

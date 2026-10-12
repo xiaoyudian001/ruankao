@@ -43,7 +43,7 @@ def run_single_pass(local,job,budget=220):
   seconds=budget-(time.monotonic()-start)
   if seconds<1:raise TimeoutError('Answer budget exhausted')
   return seconds
- is_exam=job.get('task_type','qa')=='exam'
+ is_exam=job.get('task_type','qa') in ('exam','case')
  plan={'query':re.sub(r'[\r\n]+',' ',job['question']).replace('<','＜').replace('>','＞'),'route':'direct','history':[]} if is_exam else measured('questionMs',lambda:local.prepare_conversation(job))
  if plan['route']=='clarification':
   result={'answer':CLARIFY,'references':[]}
@@ -58,6 +58,8 @@ def run_single_pass(local,job,budget=220):
   def generate(images,wire):
    timings['answerCalls']+=1
    parsed=measured('generationMs',lambda:local.generate_evidence(job,snapshot,context,images,wire,timeout=min(150 if job.get('question_images') else 90 if images else 185,remaining())))
+   from exam import reconcile_sources
+   parsed=reconcile_sources(parsed,wire.get('references',snapshot['references']),[r['id'] for r in images])
    adopted=set(parsed['usedFigureIds'])
    allowed={r['rank'] for r in wire.get('references',snapshot['references']) if not r.get('figures') or r['figures'][0]['id'] in adopted}
    if any(int(rank) not in allowed for rank in re.findall(r'\[片段(\d+)',parsed['answer'])):raise ValueError('Answer referenced unused evidence')

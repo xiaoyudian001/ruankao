@@ -12,7 +12,7 @@ class ExamTests(unittest.TestCase):
   m=self.module()
   for v in [{**VALUE,'correct':'Z'},{**VALUE,'ranks':[9]},{**VALUE,'explanation':'假的[片段9]'}]:
    with self.assertRaises(ValueError):m.validate_practice(v,[1])
-  with self.assertRaises(ValueError):m.serialize_generation('<final_answer>答案</final_answer>',[],[1],True)
+  with self.assertRaises(ValueError):m.serialize_generation('<final_answer>答案',[],[1],True)
   self.assertIsNone(m.validate_practice(None,[]))
  def test_tagged_practice_preserves_unescaped_quotes_backslashes_and_newlines(self):
   m=self.module()
@@ -43,5 +43,28 @@ class ExamTests(unittest.TestCase):
   from single_pass import exam_needs_visual
   self.assertFalse(exam_needs_visual('系统架构设计师有哪些职责？\nA.评估需求\nB.只采购服务器'))
   self.assertTrue(exam_needs_visual('计算网络可用性，MTBF=199、MTTR=1。\nA.99.5%\nB.99%'))
+ def test_closed_answer_survives_missing_optional_sections(self):
+  m=self.module()
+  for raw in ['<final_answer>逐问解析[片段1]</final_answer>', '<final_answer>逐问解析[片段1]</final_answer><used_figures>[]</used_figures><practice><question>未完成']:
+   result=json.loads(m.serialize_generation(raw,[],[1],True))
+   self.assertEqual(result['answer'],'逐问解析[片段1]');self.assertIsNone(result['practice'])
+ def test_json_answer_without_practice_is_compatible(self):
+  m=self.module();result=json.loads(m.serialize_generation(json.dumps({'answer':'问答要点[片段1]','usedFigureIds':[]}),[],[1],True))
+  self.assertIsNone(result['practice'])
+ def test_question_types_have_no_forced_options(self):
+  m=self.module()
+  samples={'choice':'以下哪些正确？（多选）\nA.需求 B.采购', 'calculation':'计算可用性，MTBF=199小时，MTTR=1小时', 'case':'某公司调整架构。请回答：\n1.有什么问题？\n2.是否复用？', 'judgment':'判断：架构就是代码复制，对吗？', 'fill':'请填空：平均故障间隔时间简称____。', 'open':'解释架构复用及其条件'}
+  for kind,q in samples.items():self.assertEqual(m.question_kind(q),kind)
+  self.assertIn('不得编造选项',m.exam_system(samples['open']))
+  self.assertIn('逐个小问',m.exam_system(samples['case']))
+ def test_unknown_answer_citation_still_rejected(self):
+  with self.assertRaisesRegex(ValueError,'Unknown answer citation'):
+   self.module().serialize_generation('<final_answer>编造[片段99]</final_answer>',[],[1],True)
+ def test_cited_visual_source_counts_as_adopted_but_unknown_ids_fail(self):
+  m=self.module();image='a'*64
+  parsed={'answer':'参考本页背景[片段10]','usedFigureIds':[],'practice':None}
+  result=m.reconcile_sources(parsed,[{'rank':1},{'rank':10,'figures':[{'id':image}]}],[image])
+  self.assertEqual(result['usedFigureIds'],[image])
+  with self.assertRaises(ValueError):m.reconcile_sources({**parsed,'usedFigureIds':['b'*64]},[{'rank':10,'figures':[{'id':image}]}],[image])
 
 if __name__=='__main__':unittest.main()

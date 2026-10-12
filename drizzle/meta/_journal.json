@@ -64,6 +64,13 @@
       "when": 1791767734995,
       "tag": "0008_nappy_thunderbolts",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1791774311095,
+      "tag": "0009_careful_supernaut",
+      "breakpoints": true
     }
   ]
 }
