@@ -5,6 +5,7 @@ from figures import SYSTEM,parse_visual_result,serialize_visual_result
 from exam import EXAM_SYSTEM,question_kind,exam_system,reconcile_sources,validate_practice,parse_generation,serialize_generation
 from screenshots import RECOGNITION_SYSTEM,parse_recognition,validate_question_images
 from essays import validate_essay_task,essay_system
+from qa_fallback import parse_gate,qa_system,validate_ai_text,supplement_answer,serialize_mixed
 
 HERE=Path(__file__).resolve().parent.parent/'sysarch-fullbook'
 PURE='\n'.join((HERE/n).read_text(encoding='utf-8') for n in ['citation_format.py','source_references.py']).replace('from citation_format import source_hint\n','')
@@ -33,7 +34,7 @@ from langchain_core.messages import SystemMessage,HumanMessage
 from lfx.custom import Component
 from lfx.io import MessageTextInput,HandleInput,Output
 from lfx.schema.message import Message
-'''+ 'EXAM_SYSTEM='+repr(EXAM_SYSTEM)+'\n'+inspect.getsource(validate_essay_task)+'\n'+inspect.getsource(essay_system)+'\n'+inspect.getsource(question_kind)+'\n'+inspect.getsource(exam_system)+'\n'+inspect.getsource(reconcile_sources)+'\n'+inspect.getsource(parse_visual_result)+'\n'+inspect.getsource(serialize_visual_result)+'\n'+inspect.getsource(validate_practice)+'\n'+inspect.getsource(parse_generation)+'\n'+inspect.getsource(serialize_generation)+'\n'+inspect.getsource(parse_recognition)+'\n'+inspect.getsource(validate_question_images)+'''
+'''+ 'EXAM_SYSTEM='+repr(EXAM_SYSTEM)+'\n'+inspect.getsource(parse_gate)+'\n'+inspect.getsource(qa_system)+'\n'+inspect.getsource(validate_ai_text)+'\n'+inspect.getsource(supplement_answer)+'\n'+inspect.getsource(serialize_mixed)+'\n'+inspect.getsource(validate_essay_task)+'\n'+inspect.getsource(essay_system)+'\n'+inspect.getsource(question_kind)+'\n'+inspect.getsource(exam_system)+'\n'+inspect.getsource(reconcile_sources)+'\n'+inspect.getsource(parse_visual_result)+'\n'+inspect.getsource(serialize_visual_result)+'\n'+inspect.getsource(validate_practice)+'\n'+inspect.getsource(parse_generation)+'\n'+inspect.getsource(serialize_generation)+'\n'+inspect.getsource(parse_recognition)+'\n'+inspect.getsource(validate_question_images)+'''
 class TextbookSingleEvidenceAnswer(Component):
  display_name="教材一次作答 · 正文或原页"
  description="证据准备完成后，按是否有原页调用一个MiniMax模型句柄。"
@@ -58,6 +59,12 @@ class TextbookSingleEvidenceAnswer(Component):
    content=data['answerContext'];model=self.text_model
   is_exam=data.get('taskType') in ('exam','case')
   is_essay=data.get('taskType')=='essay'
+  qa_kind=data.get('taskType')
+  if qa_kind in ('qa_gate','qa_fallback','qa_mixed'):
+   if data['images'] or question_images:raise ValueError('Unexpected QA policy image')
+   if qa_kind=='qa_fallback' and data['references']:raise ValueError('Unexpected fallback evidence')
+   system=qa_system(qa_kind);model=self.text_model
+   content=json.dumps({'question':data['answerContext'],'materials':[{'rank':r['rank'],'label':r['label'],'content':r['content']} for r in data['references']]},ensure_ascii=False)
   if is_essay:
    if data['images'] or question_images:raise ValueError('Unexpected essay image')
    task=validate_essay_task(data.get('essayTask'))
@@ -80,19 +87,21 @@ class TextbookSingleEvidenceAnswer(Component):
    for i,image in enumerate(question_images):content.extend([{'type':'text','text':'用户题目截图'+str(i+1)+'（原题条件，不是教材引用）'},{'type':'image_url','image_url':{'url':image['dataUrl']}}])
    model=self.vision_model
   ids=[i['id'] for i in data['images']];ranks=[r['rank'] for r in data['references']]
-  system+='\\n允许引用的教材片段编号：'+json.dumps(ranks)+'。used_figures只能填写下列教材原图id原样字符串或空数组：'+json.dumps(ids)+'。用户截图没有教材id，绝不能写入used_figures。不要填写图号、片段号或图片名称。'
+  if qa_kind!='qa_gate':system+='\\n允许引用的教材片段编号：'+json.dumps(ranks)+'。used_figures只能填写下列教材原图id原样字符串或空数组：'+json.dumps(ids)+'。用户截图没有教材id，绝不能写入used_figures。不要填写图号、片段号或图片名称。'
   deadline=asyncio.get_running_loop().time()+max(1,min(180,data['timeoutSeconds']))
   for attempt in range(2):
    result=await asyncio.wait_for(model.ainvoke([SystemMessage(content=system),HumanMessage(content=content)]),timeout=max(0.1,deadline-asyncio.get_running_loop().time()))
    if data.get('taskType')=='recognize':return Message(text=json.dumps(parse_recognition(result.content),ensure_ascii=False))
+   if qa_kind=='qa_gate':return Message(text=json.dumps(parse_gate(result.content,data['answerContext']),ensure_ascii=False))
    try:
-    parsed=json.loads(serialize_generation(result.content,ids,ranks,is_exam or is_essay))
+    parsed=json.loads(serialize_mixed(result.content,ranks) if qa_kind=='qa_mixed' else serialize_generation(result.content,ids,ranks,is_exam or is_essay))
+    if qa_kind=='qa_fallback':parsed['answer']=validate_ai_text(parsed['answer'])
     parsed=reconcile_sources(parsed,data['references'],ids)
     if is_exam and (data.get('taskType')=='case' or question_kind(data['answerContext'])!='choice'):parsed['practice']=None
     if is_essay:parsed.pop('practice',None)
     return Message(text=json.dumps(parsed,ensure_ascii=False))
    except ValueError as error:
-    recoverable=isinstance(error,json.JSONDecodeError) or any(s in str(error) for s in ('Incomplete exam envelope','Incomplete answer envelope','Invalid answer JSON','Unknown figure','Unknown answer citation','Incomplete figure declaration','Unexpected answer output','Invalid visual answer','Invalid visual text','Invalid visual response type'))
+    recoverable=isinstance(error,json.JSONDecodeError) or any(s in str(error) for s in ('Incomplete exam envelope','Incomplete answer envelope','Invalid answer JSON','Unknown figure','Unknown answer citation','Incomplete figure declaration','Unexpected answer output','Invalid visual answer','Invalid visual text','Invalid visual response type','Invalid mixed QA envelope','Invalid AI supplement'))
     if attempt or not recoverable or deadline-asyncio.get_running_loop().time()<8:raise
     system+='\\n上一次输出的格式或来源标记未通过校验。请对同一个问题和同一份资料重新简洁作答，完整闭合final_answer与used_figures，严格使用上方允许的片段编号和原图id。如果本轮要求practice则写null；未要求则不输出practice。普通文字答案必须写入final_answer，不得输出标签外文字或直接裸输出Markdown。资料未解释所问概念时，在final_answer说明本次证据不足，不编造定义或引用。不得引用用户截图作为教材来源。'
 '''

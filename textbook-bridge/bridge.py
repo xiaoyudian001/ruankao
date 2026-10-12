@@ -179,6 +179,18 @@ class LocalFlow:
         output=self.call('/run/session/'+state['generation'],body,timeout=timeout)
         return parse_generation(visual_text(output),[r['id'] for r in selected],[r['rank'] for r in wire['references']],wire['taskType'] in ('exam','case'))
 
+    def assess_qa(self,job,snapshot,query,timeout=40):
+        from figures import visual_text
+        from qa_fallback import parse_gate
+        state=json.loads((ROOT/'single-pass-flows.json').read_text(encoding='utf-8'))
+        wire={'taskType':'qa_gate','images':[],'references':snapshot['references'],'textPrompt':'',
+              'answerContext':query,'timeoutSeconds':max(1,timeout-5)}
+        encoded='single-answer-b64-v1:'+base64.b64encode(json.dumps(wire,ensure_ascii=False).encode()).decode()
+        body={'input_request':{'input_value':encoded,'input_type':'chat','output_type':'any',
+              'output_component':'SingleEvidenceAnswer-SysArch','session_id':'coverage-'+job['id'],
+              'tweaks':{'ChatInput-z2rit':{'should_store_message':False}}}}
+        return parse_gate(visual_text(self.call('/run/session/'+state['generation'],body,timeout=timeout)),query)
+
     def recognize_screenshots(self,job):
         from screenshots import recognition_wire
         from figures import visual_text

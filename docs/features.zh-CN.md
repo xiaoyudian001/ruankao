@@ -19,6 +19,7 @@
 | 多轮追问 | 最近3轮已完成问答；独立问题不必改写，指代不明确时澄清 | `lib/textbook/conversation.ts`、`sysarch-fullbook/conversation_rewrite.py` |
 | 来源引用 | 真实片段、印刷页与PDF物理页、跨页范围、原页侧栏 | `lib/textbook/sources.ts`、`app/textbook/source-panel.tsx` |
 | 输出清理 | 隐藏`<think>`区域，校验模型返回格式及实际采用来源 | `textbook-bridge/exam.py`、`figures.py` |
+| AI知识兜底 | 普通文字QA证据不足时最多补检索一次，分开教材依据与无教材引用的AI补充 | `textbook-bridge/qa_fallback.py` |
 | 一次答案生成 | 先准备证据，再选择正文或图文模型生成；异常回退有明确边界 | `textbook-bridge/single_pass.py` |
 
 正文检索向量是BGE-M3文本嵌入。BM25按词项匹配，RRF按排名融合，本地CrossEncoder重新判断问题与候选的相关性。相似度、RRF分数和重排logit不是同一数值，也不直接等于答案正确概率。

@@ -37,6 +37,7 @@
 | 模块 | 已实现 |
 | --- | --- |
 | 教材 RAG | 语义检索；完整模式结合 BM25、RRF、本地重排与上下文扩展 |
+| AI 知识补充 | 教材不足时最多补检索一次，再提供明确标记、无教材页码的通用解释 |
 | 来源核对 | 蓝色引用、教材/PDF 双页码、原页与证据文本并排查看 |
 | 图文问答 | 图示、表格及公式原页检索，读取相关原图后回答 |
 | 多题型解析 | 选择、问答、案例、计算、判断、填空；支持核对后的题目截图 |
@@ -114,6 +115,7 @@ python -m unittest discover -s tests -p 'test_*.py'
 - [本地运行与部署](docs/setup.zh-CN.md)
 - [案例逐问练习](docs/case-study.zh-CN.md)
 - [论文写作训练](docs/essay-training.zh-CN.md)
+- [教材优先与 AI 兜底](docs/qa-ai-fallback.zh-CN.md)
 - [详细机制、目录与测试](docs/project-details.zh-CN.md)
 - [框架运行说明](docs/framework.zh-CN.md)
 
