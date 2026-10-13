@@ -15,4 +15,9 @@ html=render(Screenshot,{enabled:true,disabled:false,initialAttachment:{id:'11111
 // Patch only the platform navigation adapter; the actual chat and draft hook are rendered.
 const chatUrl=compile('app/textbook/textbook-chat.tsx'),chatFile=path.resolve(dir,'app-textbook-textbook-chat.mjs');fs.writeFileSync(chatFile,fs.readFileSync(chatFile,'utf8').replace(JSON.stringify(link),JSON.stringify(pathToFileURL(linkFile).href)));
 const {default:Chat}=await import(chatUrl);html=render(Chat,{ownerId:'isolated-test-owner'});assert.ok(html.includes('清空草稿'));assert.ok(html.includes('草稿仅保存在当前浏览器'));assert.ok(html.includes('搜索标题或问答内容'));assert.ok(html.includes('发送问题'));
+assert.ok(html.includes('导出 Markdown'));
+const {default:AnswerActions}=await import(compile('app/textbook/answer-actions.tsx'));
+html=render(AnswerActions,{status:'done',disabled:false,canGenerate:true,onEdit:()=>{},onRegenerate:()=>{}});assert.ok(html.includes('编辑问题'));assert.ok(html.includes('重新生成答案'));
+html=render(AnswerActions,{status:'failed',disabled:false,canGenerate:true,onEdit:()=>{},onRegenerate:()=>{}});assert.ok(html.includes('编辑问题'));assert.ok(!html.includes('重新生成答案'));
+html=render(AnswerActions,{status:'running',disabled:false,canGenerate:true,onEdit:()=>{},onRegenerate:()=>{}});assert.equal(html,'');
 console.log(JSON.stringify({passed:true,checks:['search_controls','restored_attachment','keep_corrected_question','clear_draft','server_render_safe']}));

@@ -10,8 +10,8 @@ export function useDraftWorkspace(ownerId:string){
  const setMode=useCallback((mode:Draft['mode'])=>update({mode}),[update]);
  const setTaskType=useCallback((taskType:Draft['taskType'])=>update({taskType,screenshot:null}),[update]);
  const setScreenshot=useCallback((screenshot:EditorDraft['screenshot'])=>update({screenshot}),[update]);
- const openDraft=useCallback((session:string|null,override?:EditorDraft)=>{work.open(session,override);publish();},[work,publish]);
+ const openDraft=useCallback((session:string|null,override?:EditorDraft,preserveSaved=false)=>{work.open(session,override,preserveSaved);publish();},[work,publish]);
  const clearDraft=useCallback(()=>{work.clear();publish();},[work,publish]);
  const completeDraft=useCallback((source:string|null,target:string|null,submitted:Draft)=>{work.complete(source,target,submitted);publish();},[work,publish]);
- return {draft:value.text,mode:value.mode,taskType:value.taskType,screenshot:value.screenshot,draftStatus:status,setDraft,setMode,setTaskType,setScreenshot,openDraft,clearDraft,completeDraft};
+ return {draft:value.text,mode:value.mode,taskType:value.taskType,screenshot:value.screenshot,retrySource:value.retrySource,draftStatus:status,setDraft,setMode,setTaskType,setScreenshot,openDraft,clearDraft,completeDraft,setEditor:update};
 }

@@ -1,8 +1,9 @@
 // This tab remembers navigation and uncertain submissions, never answers or credentials.
 import type {RetrievalMode} from './policy';
 import type {TaskType} from './exam';
+import {answerSelection,type AnswerAction} from './answer-actions.ts';
 
-export type PendingRequest={question:string;sessionId:string|null;id:string;mode:RetrievalMode;taskType:TaskType;screenshotId:string|null};
+export type PendingRequest={question:string;sessionId:string|null;id:string;mode:RetrievalMode;taskType:TaskType;screenshotId:string|null;answerAction?:AnswerAction;sourceJobId?:string|null};
 export type Recovery={sessionId:string|null;request:PendingRequest|null};
 type StorageAccess=Pick<Storage,'getItem'|'setItem'|'removeItem'>;
 const id=(v:unknown):v is string=>typeof v==='string'&&/^[a-f0-9-]{36}$/i.test(v);
@@ -19,7 +20,8 @@ export function loadRecovery(storage:StorageAccess,owner:string,time=Date.now())
   if(!value||!Number.isFinite(value.savedAt)||time-value.savedAt>86400000||time<value.savedAt||!nullableId(value.sessionId))return null;
   const r=value.request;
   if(r!==null&&(!r||!id(r.id)||!nullableId(r.sessionId)||!nullableId(r.screenshotId)||typeof r.question!=='string'||!r.question.trim()||r.question.length>2000||!['default','complete'].includes(r.mode)||!['qa','exam'].includes(r.taskType)||(r.screenshotId!==null&&r.taskType!=='exam')))return null;
-  return {sessionId:value.sessionId,request:r===null?null:{id:r.id,sessionId:r.sessionId,question:r.question,mode:r.mode,taskType:r.taskType,screenshotId:r.screenshotId}};
+  const action=r?answerSelection(r.answerAction,r.sourceJobId):null;
+  return {sessionId:value.sessionId,request:r===null?null:{id:r.id,sessionId:r.sessionId,question:r.question,mode:r.mode,taskType:r.taskType,screenshotId:r.screenshotId,...(action&&action.action!=='original'?{answerAction:action.action,sourceJobId:action.source}:{})}};
  }catch{return null;}
 }
 

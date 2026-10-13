@@ -36,6 +36,8 @@ export const textbookJobs = sqliteTable("textbook_jobs", {
   ownerId: text("owner_id").notNull(),
   question: text("question").notNull(),
   taskType:text('task_type').notNull().default('qa'),
+  answerAction:text('answer_action').notNull().default('original'),
+  sourceJobId:text('source_job_id'),
   examJson:text('exam_json'),
   practiceChoice:text('practice_choice'),
   screenshotJson:text('screenshot_json'),
