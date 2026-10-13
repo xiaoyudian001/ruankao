@@ -56,6 +56,11 @@ export const textbookJobs = sqliteTable("textbook_jobs", {
   elapsedMs: integer("elapsed_ms"),
 });
 
+export const textbookSessionDeletions=sqliteTable('textbook_session_deletions',{
+ sessionId:text('session_id').primaryKey().references(()=>textbookSessions.id),
+ ownerId:text('owner_id').notNull(),deletedAt:integer('deleted_at').notNull(),
+},t=>[index('session_deletions_owner').on(t.ownerId)]);
+
 export const textbookBridge = sqliteTable("textbook_bridge", {
   id: text("id").primaryKey(),
   lastSeen: integer("last_seen").notNull(),

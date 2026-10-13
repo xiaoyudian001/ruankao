@@ -31,9 +31,10 @@ export const HISTORY_SQL=${JSON.stringify(sql('HISTORY_SQL'))};
 `);
 function compile(file,changes){let code=fs.readFileSync(file,'utf8');for(const [from,to] of Object.entries(changes))code=code.replaceAll(from,to);const target=path.join(dir,file.replaceAll('/','-').replace('.ts','.mjs'));fs.writeFileSync(target,ts.transpileModule(code,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText);return pathToFileURL(target).href;}
 const serverUrl=pathToFileURL(stub).href;
+const sessionsUrl=compile('lib/textbook/sessions.ts',{"'./server'":JSON.stringify(serverUrl)});
 const critiqueServer=compile('lib/review/critique-server.ts',{'../textbook/server':serverUrl,'../textbook/sources':url('lib/textbook/sources.ts'),'./critique':url('lib/review/critique.ts')});
 const shared={'../../../../lib/textbook/screenshots':url('lib/textbook/screenshots.ts'),'../../../../lib/textbook/server':serverUrl,'../../../../lib/textbook/policy':url('lib/textbook/policy.ts'),'../../../../lib/textbook/sources':url('lib/textbook/sources.ts'),'../../../../lib/textbook/conversation':url('lib/textbook/conversation.ts'),'../../../../lib/textbook/exam':url('lib/textbook/exam.ts'),'../../../../lib/review/critique-server':critiqueServer,'../../../../lib/review/critique':url('lib/review/critique.ts')};
-const chat=await import(compile('app/api/textbook/chat/route.ts',shared));
+const chat=await import(compile('app/api/textbook/chat/route.ts',{...shared,'../../../../lib/textbook/sessions':sessionsUrl}));
 const bridge=await import(compile('app/api/textbook/bridge/route.ts',shared));
 const exam=await import(compile('app/api/textbook/exam/route.ts',shared));
 const state=await import(serverUrl),db=state.sqlite;
