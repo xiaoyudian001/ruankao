@@ -20,4 +20,9 @@ const {default:AnswerActions}=await import(compile('app/textbook/answer-actions.
 html=render(AnswerActions,{status:'done',disabled:false,canGenerate:true,onEdit:()=>{},onRegenerate:()=>{}});assert.ok(html.includes('编辑问题'));assert.ok(html.includes('重新生成答案'));
 html=render(AnswerActions,{status:'failed',disabled:false,canGenerate:true,onEdit:()=>{},onRegenerate:()=>{}});assert.ok(html.includes('编辑问题'));assert.ok(!html.includes('重新生成答案'));
 html=render(AnswerActions,{status:'running',disabled:false,canGenerate:true,onEdit:()=>{},onRegenerate:()=>{}});assert.equal(html,'');
+assert.ok(fs.existsSync('app/textbook/streaming-answer.tsx'),'missing streaming answer UI');
+const {default:StreamingAnswer}=await import(compile('app/textbook/streaming-answer.tsx'));
+html=render(StreamingAnswer,{job:{status:'running',partial_answer:'增量正文[片段1]',cancel_requested:0},busy:false,onStop:()=>{}});assert.ok(html.includes('增量正文'));assert.ok(html.includes('停止生成'));assert.ok(!html.includes('href='));
+html=render(StreamingAnswer,{job:{status:'cancelled',partial_answer:'已收到的正文',cancel_requested:1},busy:false,onStop:()=>{}});assert.ok(html.includes('已停止'));assert.ok(html.includes('未完成'));assert.ok(!html.includes('停止生成'));
+html=render(AnswerActions,{status:'cancelled',disabled:false,canGenerate:true,onEdit:()=>{},onRegenerate:()=>{}});assert.ok(html.includes('编辑问题'));assert.ok(html.includes('重新生成答案'));
 console.log(JSON.stringify({passed:true,checks:['search_controls','restored_attachment','keep_corrected_question','clear_draft','server_render_safe']}));

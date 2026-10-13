@@ -27,7 +27,7 @@ export async function bridgeState() {
 export async function expireJobs() {
   await database().batch([
     database().prepare("UPDATE textbook_jobs SET status='failed', error=?, completed_at=? WHERE status='queued' AND created_at < ?").bind('电脑未及时领取问题，请检查连接后重试。', now(), now()-180),
-    database().prepare("UPDATE textbook_jobs SET status='failed', error=?, completed_at=? WHERE status='running' AND leased_at < ?").bind('回答超时，请检查本地服务后重试。', now(), now()-240),
+    database().prepare("UPDATE textbook_jobs SET status=CASE WHEN cancel_requested=1 THEN 'cancelled' ELSE 'failed' END, answer=CASE WHEN cancel_requested=1 THEN partial_answer ELSE answer END,error=CASE WHEN cancel_requested=1 THEN NULL ELSE ? END,completed_at=?,lease=NULL WHERE status='running' AND leased_at < ?").bind('回答超时，请检查本地服务后重试。', now(), now()-240),
   ]);
 }
 
@@ -37,7 +37,7 @@ AND status='queued' AND NOT EXISTS (SELECT 1 FROM textbook_jobs WHERE status='ru
 AND NOT EXISTS (SELECT 1 FROM textbook_critiques WHERE status='running')
 RETURNING id, question, session_id, lease, retrieval_mode, history_json, task_type, screenshot_json, task_payload_json`;
 
-export const COMPLETE_SQL = `UPDATE textbook_jobs SET status=?, answer=?, error=?, completed_at=?, elapsed_ms=?, retrieval_query=?, rewrite_route=?, references_json=?, exam_json=?, lease=NULL
+export const COMPLETE_SQL = `UPDATE textbook_jobs SET status=CASE WHEN cancel_requested=1 THEN 'cancelled' ELSE ? END, answer=CASE WHEN cancel_requested=1 THEN partial_answer ELSE ? END, error=CASE WHEN cancel_requested=1 THEN NULL ELSE ? END, completed_at=?, elapsed_ms=?, retrieval_query=?, rewrite_route=?, references_json=CASE WHEN cancel_requested=1 THEN '[]' ELSE ? END, exam_json=CASE WHEN cancel_requested=1 THEN NULL ELSE ? END, lease=NULL
 WHERE id=? AND status='running' AND lease=? AND leased_at >= ? RETURNING id`;
 
 export const HISTORY_SQL = `SELECT question,answer FROM textbook_jobs

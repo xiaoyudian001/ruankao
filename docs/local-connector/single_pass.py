@@ -1,4 +1,4 @@
-"""Retrieve once, prepare bounded original-page evidence, then generate once."""
+"""Bounded retrieval, optional one expansion, then source-separated generation."""
 import json,re,time,logging
 from pathlib import Path
 from figures import (select_figures,load_catalog,visual_query,visual_payload,cite_original_pages)
@@ -40,10 +40,11 @@ def run_single_pass(local,job,budget=220):
   try:return fn()
   finally:timings[name]=timings.get(name,0)+round((time.monotonic()-mark)*1000)
  def remaining():
+  if job.get('_stream'):job['_stream'].check()
   seconds=budget-(time.monotonic()-start)
   if seconds<1:raise TimeoutError('Answer budget exhausted')
   return seconds
- is_exam=job.get('task_type','qa')=='exam'
+ is_exam=job.get('task_type','qa') in ('exam','case')
  plan={'query':re.sub(r'[\r\n]+',' ',job['question']).replace('<','＜').replace('>','＞'),'route':'direct','history':[]} if is_exam else measured('questionMs',lambda:local.prepare_conversation(job))
  if plan['route']=='clarification':
   result={'answer':CLARIFY,'references':[]}
@@ -53,11 +54,37 @@ def run_single_pass(local,job,budget=220):
   try:
    if not is_exam or exam_needs_visual(job['question']):selected,payload,extra=prepare_visual(job['question'],plan['query'],snapshot,timings)
   except Exception as error:
+   from streaming import GenerationStopped
+   if isinstance(error,GenerationStopped):raise
    fallback=True;timings['fallbackReason']='image_prepare:'+type(error).__name__;logging.info('Original preparation unavailable: %s',type(error).__name__)
+  generation_job=job;qa_coverage=None
+  from qa_fallback import eligible,supplement_answer
+  if not fallback and eligible(job['question'],job.get('task_type','qa'),selected,job.get('question_images')):
+   try:
+    def assess(current,query):
+     value=measured('evidenceCheckMs',lambda:local.assess_qa(job,current,query,timeout=max(1,min(40,remaining()-40))))
+     return value if isinstance(value,dict) and value.get('coverage') in ('sufficient','partial','none') and isinstance(value.get('query'),str) else None
+    decision=assess(snapshot,plan['query'])
+    if decision and decision['coverage']!='sufficient' and decision['query'] and decision['query']!=plan['query'] and remaining()>115:
+     retry_plan={**plan,'query':decision['query']}
+     timings['expandedRetrievals']=1
+     retry_snapshot=measured('textRetrievalMs',lambda:local.retrieve_evidence(job,retry_plan,timeout=min(60,remaining()-75)))
+     retried=assess(retry_snapshot,retry_plan['query'])
+     if retried:
+      snapshot=retry_snapshot;plan=retry_plan;decision=retried
+     else:decision=None
+    if decision and decision['coverage'] in ('none','partial'):
+     qa_coverage=decision['coverage'];generation_job={**job,'task_type':'qa_fallback' if qa_coverage=='none' else 'qa_mixed'}
+     if qa_coverage=='none':snapshot={'rows':[],'references':[],'textPrompt':''}
+     timings['answerBasis']='ai_general' if qa_coverage=='none' else 'textbook_and_ai'
+   except Exception as error:
+    timings['coverageFailure']=type(error).__name__;logging.info('Evidence coverage unavailable: %s',type(error).__name__)
   context=answer_context(job['question'],plan['query'],plan['history'])
   def generate(images,wire):
    timings['answerCalls']+=1
-   parsed=measured('generationMs',lambda:local.generate_evidence(job,snapshot,context,images,wire,timeout=min(150 if job.get('question_images') else 90 if images else 185,remaining())))
+   parsed=measured('generationMs',lambda:local.generate_evidence(generation_job,snapshot,context,images,wire,timeout=min(150 if job.get('question_images') else 90 if images else 185,remaining())))
+   from exam import reconcile_sources
+   parsed=reconcile_sources(parsed,wire.get('references',snapshot['references']),[r['id'] for r in images])
    adopted=set(parsed['usedFigureIds'])
    allowed={r['rank'] for r in wire.get('references',snapshot['references']) if not r.get('figures') or r['figures'][0]['id'] in adopted}
    if any(int(rank) not in allowed for rank in re.findall(r'\[片段(\d+)',parsed['answer'])):raise ValueError('Answer referenced unused evidence')
@@ -68,6 +95,8 @@ def run_single_pass(local,job,budget=220):
    return parsed
   try:parsed=generate(selected,payload)
   except Exception as error:
+   from streaming import GenerationStopped
+   if isinstance(error,GenerationStopped):raise
    if not selected or job.get('question_images'):raise
    timings['fallbackReason']='visual_generation:'+type(error).__name__
    logging.info('Single visual generation unavailable: %s',type(error).__name__)
@@ -84,6 +113,11 @@ def run_single_pass(local,job,budget=220):
    normalized=normalize_citations(answer,snapshot['rows'])
    answer=normalized['text']
   answer=cite_original_pages(answer,refs)
+  if qa_coverage=='none':answer=supplement_answer(answer);refs=[]
+  elif qa_coverage=='partial':
+   cited={int(r) for r in re.findall(r'\[片段(\d+)',answer)}
+   refs=[r for r in refs if r['rank'] in cited]
+   if not refs:timings['answerBasis']='ai_general'
   if fallback:answer+=WARNING
   result={'answer':answer,'references':refs}
   if is_exam:result['practice']=parsed['practice']

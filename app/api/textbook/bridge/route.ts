@@ -7,12 +7,24 @@ import {CRITIQUE_CLAIM_SQL,CRITIQUE_COMPLETE_SQL,expireCritiques} from '../../..
 import {validateCritique} from '../../../../lib/review/critique';
 import {validatePractice} from '../../../../lib/textbook/exam';
 import {parseManifest,validateRecognition,pngInfo} from '../../../../lib/textbook/screenshots';
+import {progressSnapshot,PROGRESS_SQL,STOPPED_SQL} from '../../../../lib/textbook/streaming';
 
 export async function POST(request: Request) {
   if (!bridgeAuth(request)) return json({error:'Unauthorized'},401);
   try {
     if (Number(request.headers.get('content-length') ?? 0)>250000) return json({error:'Payload too large'},413);
     const body = await request.json() as Record<string,unknown>;
+    if(['control','progress','stopped'].includes(String(body.action))){
+      if(!validId(body.id)||!validId(body.lease))return json({error:'Invalid job control'},400);
+      const db=database(),job=await db.prepare("SELECT cancel_requested,partial_seq FROM textbook_jobs WHERE id=? AND lease=? AND status='running' AND leased_at>=? AND task_type IN ('qa','exam')").bind(body.id,body.lease,now()-240).first<{cancel_requested:number;partial_seq:number}>();
+      if(!job)return json({error:'Late job control'},409);
+      if(body.action==='control')return json({ok:true,cancelRequested:job.cancel_requested===1});
+      if(body.action==='stopped'){const changed=await db.prepare(STOPPED_SQL).bind(now(),body.id,body.lease,now()-240).first();return json({ok:Boolean(changed)},changed?200:409);}
+      let snapshot;try{snapshot=progressSnapshot(body);}catch{return json({error:'Invalid progress'},400);}
+      await db.prepare(PROGRESS_SQL).bind(snapshot.text,snapshot.seq,body.id,body.lease,now()-240,snapshot.seq).first();
+      const current=await db.prepare("SELECT cancel_requested FROM textbook_jobs WHERE id=? AND lease=? AND status='running' AND leased_at>=?").bind(body.id,body.lease,now()-240).first<{cancel_requested:number}>();
+      return current?json({ok:true,cancelRequested:current.cancel_requested===1}):json({error:'Late progress'},409);
+    }
     if (body.action === 'heartbeat') {
       const modes=Array.isArray(body.modes)?Object.keys(RETRIEVAL_MODES).filter(mode=>(body.modes as unknown[]).includes(mode)):['default'];
       await database().prepare('INSERT INTO textbook_bridge (id,last_seen,ready,modes,conversation_ready,sources_ready,critique_ready,exam_ready,screenshot_ready,essay_ready) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen, ready=excluded.ready, modes=excluded.modes, conversation_ready=excluded.conversation_ready, sources_ready=excluded.sources_ready,critique_ready=excluded.critique_ready,exam_ready=excluded.exam_ready,screenshot_ready=excluded.screenshot_ready,essay_ready=excluded.essay_ready').bind('desktop',now(),body.ready===true?1:0,JSON.stringify(modes),body.conversationReady===true?1:0,body.sourcesReady===true?1:0,body.critiqueReady===true?1:0,body.examReady===true?1:0,body.screenshotReady===true?1:0,body.essayReady===true?1:0).run();
@@ -63,8 +75,9 @@ export async function POST(request: Request) {
       const error = typeof body.error === 'string' ? body.error.slice(0,300) : '';
       if (!answer && !error) return json({error:'Empty result'},400);
       const refs=references(body.references);
-      const job=await database().prepare("SELECT task_type FROM textbook_jobs WHERE id=? AND status='running' AND lease=? AND leased_at>=?").bind(body.id,body.lease,now()-240).first<{task_type:string}>();
+      const job=await database().prepare("SELECT task_type,cancel_requested FROM textbook_jobs WHERE id=? AND status='running' AND lease=? AND leased_at>=?").bind(body.id,body.lease,now()-240).first<{task_type:string;cancel_requested:number}>();
       if(!job)return json({error:'Late result'},409);
+      if(job.cancel_requested===1){const stopped=await database().prepare(STOPPED_SQL).bind(now(),body.id,body.lease,now()-240).first();return json({ok:Boolean(stopped)},stopped?200:409);}
       if(job.task_type==='recognize')return json({error:'Wrong task result type'},400);
       const diagnostic=rewriteDiagnostic(body,job.task_type==='case'?6000:2000);
       let practice=null;

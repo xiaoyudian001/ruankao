@@ -35,7 +35,7 @@ const sessionsUrl=compile('lib/textbook/sessions.ts',{"'./server'":JSON.stringif
 const critiqueServer=compile('lib/review/critique-server.ts',{'../textbook/server':serverUrl,'../textbook/sources':url('lib/textbook/sources.ts'),'./critique':url('lib/review/critique.ts')});
 const shared={'../../../../lib/textbook/screenshots':url('lib/textbook/screenshots.ts'),'../../../../lib/textbook/server':serverUrl,'../../../../lib/textbook/policy':url('lib/textbook/policy.ts'),'../../../../lib/textbook/sources':url('lib/textbook/sources.ts'),'../../../../lib/textbook/conversation':url('lib/textbook/conversation.ts'),'../../../../lib/textbook/exam':url('lib/textbook/exam.ts'),'../../../../lib/review/critique-server':critiqueServer,'../../../../lib/review/critique':url('lib/review/critique.ts')};
 const chat=await import(compile('app/api/textbook/chat/route.ts',{...shared,'../../../../lib/textbook/sessions':sessionsUrl,'../../../../lib/textbook/answer-actions':url('lib/textbook/answer-actions.ts')}));
-const bridge=await import(compile('app/api/textbook/bridge/route.ts',shared));
+const bridge=await import(compile('app/api/textbook/bridge/route.ts',{...shared,'../../../../lib/textbook/streaming':url('lib/textbook/streaming.ts')}));
 const exam=await import(compile('app/api/textbook/exam/route.ts',shared));
 const state=await import(serverUrl),db=state.sqlite;
 for(const file of fs.readdirSync('drizzle').filter(n=>n.endsWith('.sql')).sort())db.exec(fs.readFileSync(path.join('drizzle',file),'utf8'));

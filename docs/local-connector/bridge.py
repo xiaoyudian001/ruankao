@@ -142,6 +142,18 @@ class LocalFlow:
             return set(state['retrieval'])==set(FLOW_MODES)
         except Exception:return False
 
+    def essay_ready(self):
+        try:
+            state=json.loads((ROOT/'single-pass-flows.json').read_text(encoding='utf-8'))
+            flow=self.call('/flows/'+state['generation'])
+            code=next(n for n in flow['data']['nodes'] if n['id']=='SingleEvidenceAnswer-SysArch')['data']['node']['template']['code']['value']
+            return 'def essay_system(' in code and 'essayTask' in code
+        except Exception:return False
+
+    def run_essay(self,job):
+        from essays import run_essay
+        return run_essay(self,job)
+
     def retrieve_evidence(self,job,plan,timeout=130):
         from source_references import source_references
         state=json.loads((ROOT/'single-pass-flows.json').read_text(encoding='utf-8'))
@@ -162,10 +174,24 @@ class LocalFlow:
         from exam import parse_generation
         state=json.loads((ROOT/'single-pass-flows.json').read_text(encoding='utf-8'))
         wire={**payload,'images':payload.get('images',[]),'questionImages':job.get('question_images',[]),'references':payload.get('references',snapshot['references']),'textPrompt':snapshot['textPrompt'],'answerContext':context,'timeoutSeconds':max(1,timeout-8),'taskType':job.get('task_type','qa')}
+        if job.get('_stream'):
+            job['_stream'].check();wire['stream']={'id':job['id'],'lease':job['lease']}
         encoded='single-answer-b64-v1:'+base64.b64encode(json.dumps(wire,ensure_ascii=False).encode()).decode()
         body={'input_request':{'input_value':encoded,'input_type':'chat','output_type':'any','output_component':'SingleEvidenceAnswer-SysArch','session_id':'answer-'+job['id'],'tweaks':{'ChatInput-z2rit':{'should_store_message':False}}}}
         output=self.call('/run/session/'+state['generation'],body,timeout=timeout)
-        return parse_generation(visual_text(output),[r['id'] for r in selected],[r['rank'] for r in wire['references']],wire['taskType']=='exam')
+        return parse_generation(visual_text(output),[r['id'] for r in selected],[r['rank'] for r in wire['references']],wire['taskType'] in ('exam','case'))
+
+    def assess_qa(self,job,snapshot,query,timeout=40):
+        from figures import visual_text
+        from qa_fallback import parse_gate
+        state=json.loads((ROOT/'single-pass-flows.json').read_text(encoding='utf-8'))
+        wire={'taskType':'qa_gate','images':[],'references':snapshot['references'],'textPrompt':'',
+              'answerContext':query,'timeoutSeconds':max(1,timeout-5)}
+        encoded='single-answer-b64-v1:'+base64.b64encode(json.dumps(wire,ensure_ascii=False).encode()).decode()
+        body={'input_request':{'input_value':encoded,'input_type':'chat','output_type':'any',
+              'output_component':'SingleEvidenceAnswer-SysArch','session_id':'coverage-'+job['id'],
+              'tweaks':{'ChatInput-z2rit':{'should_store_message':False}}}}
+        return parse_gate(visual_text(self.call('/run/session/'+state['generation'],body,timeout=timeout)),query)
 
     def recognize_screenshots(self,job):
         from screenshots import recognition_wire
@@ -248,8 +274,9 @@ def main():
             else:critique_ready.clear()
             try:
                 conversational=available and local.conversation_ready()
-                cloud({'action':'heartbeat','ready':available,'modes':modes,'conversationReady':conversational,'sourcesReady':sources_ready.is_set(),'critiqueReady':critique_available,'examReady':available,'screenshotReady':available})
-                (ROOT/'status.json').write_text(json.dumps({'updated_at':int(time.time()),'local_ready':available,'connected':True,'modes':modes,'conversation_ready':conversational,'sources_ready':sources_ready.is_set(),'critique_ready':critique_available,'figure_hybrid_ready':figures_ready.is_set(),'structured_ready':structured_ready.is_set(),'single_pass_ready':single_pass_available,'exam_ready':available,'screenshot_ready':available}),encoding='utf-8')
+                essay_available=available and local.essay_ready()
+                cloud({'action':'heartbeat','ready':available,'modes':modes,'conversationReady':conversational,'sourcesReady':sources_ready.is_set(),'critiqueReady':critique_available,'examReady':available,'screenshotReady':available,'essayReady':essay_available})
+                (ROOT/'status.json').write_text(json.dumps({'updated_at':int(time.time()),'local_ready':available,'connected':True,'modes':modes,'conversation_ready':conversational,'sources_ready':sources_ready.is_set(),'critique_ready':critique_available,'figure_hybrid_ready':figures_ready.is_set(),'structured_ready':structured_ready.is_set(),'single_pass_ready':single_pass_available,'exam_ready':available,'screenshot_ready':available,'essay_ready':essay_available}),encoding='utf-8')
             except Exception as error:
                 logging.info('Heartbeat unavailable: %s HTTP=%s',type(error).__name__,getattr(error,'code','n/a'))
                 (ROOT/'status.json').write_text(json.dumps({'updated_at':int(time.time()),'local_ready':available,'connected':False}),encoding='utf-8')
@@ -269,6 +296,10 @@ def main():
             if not job:stop.wait(3);continue
             is_recognition=job.get('task_type')=='recognize'
             start=time.monotonic();result={'action':'critiqueComplete' if is_critique else 'recognitionComplete' if is_recognition else 'complete','id':job['id'],'lease':job['lease']}
+            monitor=None
+            if not is_critique and job.get('task_type','qa') in ('qa','exam'):
+                from streaming import StreamMonitor
+                monitor=StreamMonitor(job,cloud);job['_stream']=monitor;monitor.start()
             try:
                 if not is_critique and job.get('screenshot_json'):
                     from screenshots import validate_question_images
@@ -276,6 +307,7 @@ def main():
                     if not job['question_images']:raise ValueError('Screenshots unavailable')
                 if is_critique:result['result']=local.run_critique(job)
                 elif is_recognition:result['recognition']=local.recognize_screenshots(job)
+                elif job.get('task_type')=='essay':result.update(local.run_essay(job))
                 else:
                     from single_pass import run_single_pass,record_timings
                     answer=run_single_pass(local,job,budget=max(1,220-(time.monotonic()-start)))
@@ -284,8 +316,13 @@ def main():
                     except OSError as error:logging.info('Timing record unavailable: %s',type(error).__name__)
                     result.update(answer)
             except Exception as error:
-                logging.info('Flow failed %s: %s',job['id'],type(error).__name__)
-                result['error']='AI 点评执行失败，请稍后重试。' if is_critique else '本地问答流程执行失败或超时，请检查 Langflow 和 Ollama 后重试。'
+                from flow_errors import failure_message
+                message=failure_message(error)
+                logging.info('Flow failed %s: %s HTTP=%s category=%s',job['id'],type(error).__name__,getattr(error,'code','n/a'),message)
+                result['error']=message
+            if monitor:
+                monitor.close()
+                if monitor.box.cancelled():result={'action':'stopped','id':job['id'],'lease':job['lease']}
             result['elapsedMs']=int((time.monotonic()-start)*1000)
             # Retry only delivery of an already-generated result, never the model execution.
             for attempt in range(3):
@@ -294,6 +331,7 @@ def main():
                     if error.code==409:logging.info('Late result rejected %s',job['id']);break
                     stop.wait(2*(attempt+1))
                 except Exception:stop.wait(2*(attempt+1))
+            if monitor:monitor.box.cleanup()
     finally:
         stop.set()
         try:cloud({'action':'heartbeat','ready':False})

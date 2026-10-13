@@ -17,6 +17,7 @@ class QueueTest(unittest.TestCase):
         self.db.execute("ALTER TABLE textbook_jobs ADD references_json TEXT NOT NULL DEFAULT '[]'")
         self.db.executescript("ALTER TABLE textbook_jobs ADD task_type TEXT NOT NULL DEFAULT 'qa'; ALTER TABLE textbook_jobs ADD exam_json TEXT; ALTER TABLE textbook_jobs ADD screenshot_json TEXT;")
         self.db.execute('ALTER TABLE textbook_jobs ADD task_payload_json TEXT')
+        self.db.executescript("ALTER TABLE textbook_jobs ADD partial_answer TEXT NOT NULL DEFAULT ''; ALTER TABLE textbook_jobs ADD partial_seq INTEGER NOT NULL DEFAULT 0; ALTER TABLE textbook_jobs ADD cancel_requested INTEGER NOT NULL DEFAULT 0;")
         self.db.execute('CREATE TABLE textbook_critiques(id TEXT,status TEXT)')
     def test_one_running_and_reject_wrong_or_expired_completion(self):
         self.assertEqual(self.db.execute(self.claim,('lease-1',20)).fetchone()[0],'one')

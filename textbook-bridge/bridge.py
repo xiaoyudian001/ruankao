@@ -174,6 +174,8 @@ class LocalFlow:
         from exam import parse_generation
         state=json.loads((ROOT/'single-pass-flows.json').read_text(encoding='utf-8'))
         wire={**payload,'images':payload.get('images',[]),'questionImages':job.get('question_images',[]),'references':payload.get('references',snapshot['references']),'textPrompt':snapshot['textPrompt'],'answerContext':context,'timeoutSeconds':max(1,timeout-8),'taskType':job.get('task_type','qa')}
+        if job.get('_stream'):
+            job['_stream'].check();wire['stream']={'id':job['id'],'lease':job['lease']}
         encoded='single-answer-b64-v1:'+base64.b64encode(json.dumps(wire,ensure_ascii=False).encode()).decode()
         body={'input_request':{'input_value':encoded,'input_type':'chat','output_type':'any','output_component':'SingleEvidenceAnswer-SysArch','session_id':'answer-'+job['id'],'tweaks':{'ChatInput-z2rit':{'should_store_message':False}}}}
         output=self.call('/run/session/'+state['generation'],body,timeout=timeout)
@@ -294,6 +296,10 @@ def main():
             if not job:stop.wait(3);continue
             is_recognition=job.get('task_type')=='recognize'
             start=time.monotonic();result={'action':'critiqueComplete' if is_critique else 'recognitionComplete' if is_recognition else 'complete','id':job['id'],'lease':job['lease']}
+            monitor=None
+            if not is_critique and job.get('task_type','qa') in ('qa','exam'):
+                from streaming import StreamMonitor
+                monitor=StreamMonitor(job,cloud);job['_stream']=monitor;monitor.start()
             try:
                 if not is_critique and job.get('screenshot_json'):
                     from screenshots import validate_question_images
@@ -314,6 +320,9 @@ def main():
                 message=failure_message(error)
                 logging.info('Flow failed %s: %s HTTP=%s category=%s',job['id'],type(error).__name__,getattr(error,'code','n/a'),message)
                 result['error']=message
+            if monitor:
+                monitor.close()
+                if monitor.box.cancelled():result={'action':'stopped','id':job['id'],'lease':job['lease']}
             result['elapsedMs']=int((time.monotonic()-start)*1000)
             # Retry only delivery of an already-generated result, never the model execution.
             for attempt in range(3):
@@ -322,6 +331,7 @@ def main():
                     if error.code==409:logging.info('Late result rejected %s',job['id']);break
                     stop.wait(2*(attempt+1))
                 except Exception:stop.wait(2*(attempt+1))
+            if monitor:monitor.box.cleanup()
     finally:
         stop.set()
         try:cloud({'action':'heartbeat','ready':False})

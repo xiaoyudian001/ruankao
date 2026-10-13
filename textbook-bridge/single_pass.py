@@ -40,6 +40,7 @@ def run_single_pass(local,job,budget=220):
   try:return fn()
   finally:timings[name]=timings.get(name,0)+round((time.monotonic()-mark)*1000)
  def remaining():
+  if job.get('_stream'):job['_stream'].check()
   seconds=budget-(time.monotonic()-start)
   if seconds<1:raise TimeoutError('Answer budget exhausted')
   return seconds
@@ -53,6 +54,8 @@ def run_single_pass(local,job,budget=220):
   try:
    if not is_exam or exam_needs_visual(job['question']):selected,payload,extra=prepare_visual(job['question'],plan['query'],snapshot,timings)
   except Exception as error:
+   from streaming import GenerationStopped
+   if isinstance(error,GenerationStopped):raise
    fallback=True;timings['fallbackReason']='image_prepare:'+type(error).__name__;logging.info('Original preparation unavailable: %s',type(error).__name__)
   generation_job=job;qa_coverage=None
   from qa_fallback import eligible,supplement_answer
@@ -92,6 +95,8 @@ def run_single_pass(local,job,budget=220):
    return parsed
   try:parsed=generate(selected,payload)
   except Exception as error:
+   from streaming import GenerationStopped
+   if isinstance(error,GenerationStopped):raise
    if not selected or job.get('question_images'):raise
    timings['fallbackReason']='visual_generation:'+type(error).__name__
    logging.info('Single visual generation unavailable: %s',type(error).__name__)

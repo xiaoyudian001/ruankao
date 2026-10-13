@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     const visible=candidate?await database().prepare(UNDELETED_SESSION).bind(candidate,user.userId).first():null;
     const sessionId=visible?candidate:null;
     const sessions = await database().prepare(`SELECT id, title, updated_at FROM textbook_sessions WHERE ${LIVE_CHAT} ORDER BY updated_at DESC,id DESC LIMIT 50`).bind(user.userId).all();
-    const messages = sessionId ? await database().prepare("SELECT id, question, status, answer, error, elapsed_ms, created_at, leased_at, retrieval_mode, retrieval_query, rewrite_route, references_json, task_type, exam_json, practice_choice,screenshot_json,answer_action,source_job_id FROM textbook_jobs WHERE owner_id=? AND session_id=? AND task_type IN ('qa','exam') ORDER BY created_at,rowid LIMIT 200").bind(user.userId,sessionId).all() : {results:[]};
+    const messages = sessionId ? await database().prepare("SELECT id, question, status, answer, error, elapsed_ms, created_at, leased_at, retrieval_mode, retrieval_query, rewrite_route, references_json, task_type, exam_json, practice_choice,screenshot_json,answer_action,source_job_id,partial_answer,partial_seq,cancel_requested FROM textbook_jobs WHERE owner_id=? AND session_id=? AND task_type IN ('qa','exam') ORDER BY created_at,rowid LIMIT 200").bind(user.userId,sessionId).all() : {results:[]};
     const summaries=messages.results.map(row=>{const {references_json,exam_json,practice_choice,screenshot_json,...message}=row;const refs=sourceSummaries(references_json);let practice=null,screenshotId=null,screenshotCount=0;try{practice=practiceView(savedPractice(exam_json,refs.map(r=>r.rank)),practice_choice);}catch{/* Preserve a usable original answer if practice is corrupt. */}try{if(screenshot_json){const manifest=parseManifest(screenshot_json);screenshotId=manifest.recognitionId;screenshotCount=manifest.images.length;}}catch{}return {...message,references:refs,practice,screenshotId,screenshotCount};});
     return json({sessions:sessions.results,messages:summaries,selectedSessionId:sessionId,serverNow:now(),...await bridgeState()});
   } catch (error) {
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     const source=selection.source?await database().prepare("SELECT id,session_id,question,status,retrieval_mode,task_type,screenshot_json,history_json FROM textbook_jobs WHERE id=? AND owner_id=? AND task_type IN ('qa','exam')").bind(selection.source,user.userId).first<{id:string;session_id:string;question:string;status:string;retrieval_mode:string;task_type:string;screenshot_json:string|null;history_json:string}>():null;
     if(selection.source&&!source)return json({error:'原问题不存在或无权访问。'},404);
     if(source&&body.sessionId!==source.session_id)return json({error:'请在原问题所属会话中重新提问。'},400);
-    if(source&&!['done','failed'].includes(source.status)||source&&selection.action==='regenerate'&&source.status!=='done')return json({error:'原问题尚未完成，暂时不能执行此操作。'},409);
+    if(source&&!['done','failed','cancelled'].includes(source.status)||source&&selection.action==='regenerate'&&!['done','cancelled'].includes(source.status))return json({error:'原问题尚未完成，暂时不能执行此操作。'},409);
     const question = validQuestion(selection.action==='regenerate'?source?.question:body.question);
     const mode=validRetrievalMode(source?.retrieval_mode??body.retrievalMode);
     const taskType=validTaskType(source?.task_type??body.taskType);
@@ -90,4 +90,18 @@ export async function POST(request: Request) {
     console.error('textbook submit',error instanceof Error ? error.name : 'error');
     return json({error:'发送失败，问题已保留，请重试。'},503);
   }
+}
+
+export async function DELETE(request:Request){
+ try{
+  const user=await owner();if(!user)return json({error:'请使用网站所有者账号登录。'},403);
+  if(!sameOrigin(request))return json({error:'请求来源无效。'},403);
+  if(Number(request.headers.get('content-length')??0)>1000)return json({error:'请求过长。'},400);
+  const body=await request.json() as Record<string,unknown>;if(!validId(body.jobId))return json({error:'任务标识无效。'},400);
+  const db=database(),job=await db.prepare("SELECT status FROM textbook_jobs WHERE id=? AND owner_id=? AND task_type IN ('qa','exam') AND NOT EXISTS(SELECT 1 FROM textbook_session_deletions d WHERE d.session_id=textbook_jobs.session_id)").bind(body.jobId,user.userId).first<{status:string}>();
+  if(!job)return json({error:'任务不存在或无权访问。'},404);
+  if(job.status==='cancelled')return json({ok:true,status:'cancelled'});
+  const changed=await db.prepare("UPDATE textbook_jobs SET cancel_requested=1,status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,completed_at=CASE WHEN status='queued' THEN ? ELSE completed_at END WHERE id=? AND owner_id=? AND status IN ('queued','running') AND task_type IN ('qa','exam') AND NOT EXISTS(SELECT 1 FROM textbook_session_deletions d WHERE d.session_id=textbook_jobs.session_id) RETURNING status").bind(now(),body.jobId,user.userId).first<{status:string}>();
+  return changed?json({ok:true,status:changed.status}):json({error:'任务已结束，请刷新查看结果。'},409);
+ }catch{return json({error:'停止请求未确认，请刷新任务状态后重试。'},503);}
 }

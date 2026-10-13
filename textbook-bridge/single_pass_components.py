@@ -28,7 +28,7 @@ class TextbookEvidenceSnapshot(Component):
 '''
 
 def generation_code():
- return '''
+ return Path(__file__).with_name('streaming.py').read_text(encoding='utf-8')+'''
 import asyncio,base64,json,re,struct,time
 from langchain_core.messages import SystemMessage,HumanMessage
 from lfx.custom import Component
@@ -89,12 +89,16 @@ class TextbookSingleEvidenceAnswer(Component):
   ids=[i['id'] for i in data['images']];ranks=[r['rank'] for r in data['references']]
   if qa_kind!='qa_gate':system+='\\n允许引用的教材片段编号：'+json.dumps(ranks)+'。used_figures只能填写下列教材原图id原样字符串或空数组：'+json.dumps(ids)+'。用户截图没有教材id，绝不能写入used_figures。不要填写图号、片段号或图片名称。'
   deadline=asyncio.get_running_loop().time()+max(1,min(180,data['timeoutSeconds']))
+  stream_info=data.get('stream')
+  box=Mailbox(stream_info['id'],stream_info['lease'],create=False) if stream_info and qa_kind in ('qa','qa_fallback','qa_mixed','exam') else None
   for attempt in range(2):
-   result=await asyncio.wait_for(model.ainvoke([SystemMessage(content=system),HumanMessage(content=content)]),timeout=max(0.1,deadline-asyncio.get_running_loop().time()))
-   if data.get('taskType')=='recognize':return Message(text=json.dumps(parse_recognition(result.content),ensure_ascii=False))
-   if qa_kind=='qa_gate':return Message(text=json.dumps(parse_gate(result.content,data['answerContext']),ensure_ascii=False))
+   messages=[SystemMessage(content=system),HumanMessage(content=content)]
+   raw=await asyncio.wait_for(consume_model(model,messages,box,qa_kind) if box else model.ainvoke(messages),timeout=max(0.1,deadline-asyncio.get_running_loop().time()))
+   raw=raw if isinstance(raw,str) else raw.content
+   if data.get('taskType')=='recognize':return Message(text=json.dumps(parse_recognition(raw),ensure_ascii=False))
+   if qa_kind=='qa_gate':return Message(text=json.dumps(parse_gate(raw,data['answerContext']),ensure_ascii=False))
    try:
-    parsed=json.loads(serialize_mixed(result.content,ranks) if qa_kind=='qa_mixed' else serialize_generation(result.content,ids,ranks,is_exam or is_essay))
+    parsed=json.loads(serialize_mixed(raw,ranks) if qa_kind=='qa_mixed' else serialize_generation(raw,ids,ranks,is_exam or is_essay))
     if qa_kind=='qa_fallback':parsed['answer']=validate_ai_text(parsed['answer'])
     parsed=reconcile_sources(parsed,data['references'],ids)
     if is_exam and (data.get('taskType')=='case' or question_kind(data['answerContext'])!='choice'):parsed['practice']=None

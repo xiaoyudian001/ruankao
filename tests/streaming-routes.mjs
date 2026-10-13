@@ -1,0 +1,21 @@
+import './exam-routes.mjs';
+import assert from 'node:assert/strict';import path from 'node:path';import {pathToFileURL} from 'node:url';
+const dir=path.resolve('outputs/exam-route-test'),get=f=>import(pathToFileURL(path.join(dir,f)).href),state=await get('server.mjs'),chat=await get('app-api-textbook-chat-route.mjs'),bridge=await get('app-api-textbook-bridge-route.mjs'),db=state.sqlite;
+assert.equal(typeof chat.DELETE,'function','missing owner stop endpoint');
+const post=async(body)=>{const r=await bridge.POST(new Request('http://localhost:5173/api/textbook/bridge',{method:'POST',headers:{Authorization:'Bearer local-test','Content-Type':'application/json'},body:JSON.stringify(body)}));return {status:r.status,data:await r.json()};};
+const cancel=async(id,origin='http://localhost:5173')=>{const r=await chat.DELETE(new Request('http://localhost:5173/api/textbook/chat',{method:'DELETE',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({jobId:id})}));return {status:r.status,data:await r.json()};};
+function add(status='running',type='qa',owner='owner'){const id=crypto.randomUUID(),session=crypto.randomUUID(),lease=crypto.randomUUID();db.prepare('INSERT INTO textbook_sessions VALUES(?,?,?,?,?)').run(session,owner,'流式验证',state.now(),state.now());db.prepare('INSERT INTO textbook_jobs(id,session_id,owner_id,question,status,created_at,leased_at,lease,task_type) VALUES(?,?,?,?,?,?,?,?,?)').run(id,session,owner,'解释自写样例',status,state.now(),state.now(),lease,type);return {id,session,lease};}
+const job=add(),progress=(seq,text='正文快照')=>post({action:'progress',id:job.id,lease:job.lease,seq,text});
+assert.equal((await progress(1)).status,200);assert.equal((await progress(1)).status,200);assert.equal((await progress(0)).status,400);assert.equal((await progress(2,'<think>hidden')).status,400);
+assert.equal((await post({action:'progress',id:job.id,lease:crypto.randomUUID(),seq:2,text:'wrong'})).status,409);
+assert.equal((await progress(3,'更新正文')).status,200);assert.equal((await progress(2,'旧正文')).status,200);assert.equal(db.prepare('SELECT partial_answer FROM textbook_jobs WHERE id=?').get(job.id).partial_answer,'更新正文');
+state.signIn('other');assert.equal((await cancel(job.id)).status,404);state.signIn('owner');assert.equal((await cancel(job.id,'https://evil.example')).status,403);
+assert.equal((await cancel(job.id)).status,200);assert.equal(db.prepare('SELECT status FROM textbook_jobs WHERE id=?').get(job.id).status,'running');
+assert.equal((await post({action:'control',id:job.id,lease:job.lease})).data.cancelRequested,true);
+assert.equal((await post({action:'complete',id:job.id,lease:job.lease,answer:'不应成为完成答案',references:[]})).status,200);
+let saved=db.prepare('SELECT * FROM textbook_jobs WHERE id=?').get(job.id);assert.equal(saved.status,'cancelled');assert.equal(saved.answer,'更新正文');assert.equal(saved.references_json,'[]');assert.equal((await progress(4)).status,409);
+const queued=add('queued');assert.equal((await cancel(queued.id)).status,200);assert.equal(db.prepare('SELECT status FROM textbook_jobs WHERE id=?').get(queued.id).status,'cancelled');assert.equal((await cancel(queued.id)).status,200);
+const normal=add();assert.equal((await post({action:'complete',id:normal.id,lease:normal.lease,answer:'校验后的最终答案',references:[]})).status,200);assert.equal((await cancel(normal.id)).status,409);
+const hidden=add('running','case');assert.equal((await cancel(hidden.id)).status,404);const deleted=add();db.prepare('INSERT INTO textbook_session_deletions VALUES(?,?,?)').run(deleted.session,'owner',state.now());assert.equal((await cancel(deleted.id)).status,404);
+const stopped=add();await cancel(stopped.id);assert.equal((await post({action:'stopped',id:stopped.id,lease:stopped.lease})).status,200);assert.equal((await post({action:'stopped',id:stopped.id,lease:stopped.lease})).status,409);
+console.log(JSON.stringify({passed:true,checks:['owner_stop','origin','sequence','snapshot_filter','lease','cancel_complete_race','queue_stop','stop_ack','terminal','hidden','deleted']}));

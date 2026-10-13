@@ -8,6 +8,8 @@ class ScreenshotGenerationTests(unittest.TestCase):
   tree=ast.parse(generation_code());functions=[n for n in tree.body if isinstance(n,ast.FunctionDef)];build=next(n for cls in tree.body if isinstance(cls,ast.ClassDef) for n in cls.body if isinstance(n,ast.AsyncFunctionDef));functions.append(build)
   from exam import EXAM_SYSTEM
   ns={'EXAM_SYSTEM':EXAM_SYSTEM,'asyncio':asyncio,'base64':base64,'json':json,'re':re,'struct':struct,'Message':lambda **kw:SimpleNamespace(**kw),'SystemMessage':lambda **kw:SimpleNamespace(**kw),'HumanMessage':lambda **kw:SimpleNamespace(**kw)}
+  import streaming
+  ns.update({name:getattr(streaming,name) for name in ('Mailbox','consume_model','visible_answer','GenerationStopped','os','shutil','tempfile','time','uuid','Path')})
   exec(compile(ast.Module(body=functions,type_ignores=[]),'generation','exec'),ns);return ns['build']
  def image(self):
   raw=b'\x89PNG\r\n\x1a\n'+struct.pack('>I',13)+b'IHDR'+struct.pack('>II',600,800)+b'\x00'*16
