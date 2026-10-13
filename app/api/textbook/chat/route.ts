@@ -10,11 +10,15 @@ export async function GET(request: Request) {
     const user = await owner();
     if (!user) return json({error:'请使用网站所有者的 ChatGPT 账号登录。'},403);
     await expireJobs();
-    const sessionId = new URL(request.url).searchParams.get('sessionId');
+    const params = new URL(request.url).searchParams;
+    const requestedSession = params.get('sessionId');
+    const requestId = params.get('requestId');
+    const recovered = requestId && validId(requestId) ? await database().prepare("SELECT session_id FROM textbook_jobs WHERE id=? AND owner_id=? AND task_type IN ('qa','exam')").bind(requestId,user.userId).first<{session_id:string}>() : null;
+    const sessionId = recovered?.session_id ?? (requestedSession && validId(requestedSession) ? requestedSession : null);
     const sessions = await database().prepare("SELECT id, title, updated_at FROM textbook_sessions WHERE owner_id=? AND EXISTS (SELECT 1 FROM textbook_jobs WHERE session_id=textbook_sessions.id AND task_type IN ('qa','exam')) ORDER BY updated_at DESC LIMIT 50").bind(user.userId).all();
-    const messages = sessionId && validId(sessionId) ? await database().prepare("SELECT id, question, status, answer, error, elapsed_ms, created_at, retrieval_mode, retrieval_query, rewrite_route, references_json, task_type, exam_json, practice_choice,screenshot_json FROM textbook_jobs WHERE owner_id=? AND session_id=? AND task_type IN ('qa','exam') ORDER BY created_at,rowid LIMIT 200").bind(user.userId,sessionId).all() : {results:[]};
+    const messages = sessionId ? await database().prepare("SELECT id, question, status, answer, error, elapsed_ms, created_at, leased_at, retrieval_mode, retrieval_query, rewrite_route, references_json, task_type, exam_json, practice_choice,screenshot_json FROM textbook_jobs WHERE owner_id=? AND session_id=? AND task_type IN ('qa','exam') ORDER BY created_at,rowid LIMIT 200").bind(user.userId,sessionId).all() : {results:[]};
     const summaries=messages.results.map(row=>{const {references_json,exam_json,practice_choice,screenshot_json,...message}=row;const refs=sourceSummaries(references_json);let practice=null,screenshotId=null,screenshotCount=0;try{practice=practiceView(savedPractice(exam_json,refs.map(r=>r.rank)),practice_choice);}catch{/* Preserve a usable original answer if practice is corrupt. */}try{if(screenshot_json){const manifest=parseManifest(screenshot_json);screenshotId=manifest.recognitionId;screenshotCount=manifest.images.length;}}catch{}return {...message,references:refs,practice,screenshotId,screenshotCount};});
-    return json({sessions:sessions.results,messages:summaries,...await bridgeState()});
+    return json({sessions:sessions.results,messages:summaries,selectedSessionId:sessionId,serverNow:now(),...await bridgeState()});
   } catch (error) {
     console.error('textbook read', error instanceof Error ? error.name : 'error');
     return json({error:'会话暂时无法读取，请稍后重试。'},503);

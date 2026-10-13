@@ -49,9 +49,14 @@ state.signIn(null);assert.equal((await post(chat,'chat',body)).status,403);state
 assert.equal((await post(chat,'chat',body,{Origin:'https://evil.example'})).status,403);
 assert.equal((await post(chat,'chat',{...body,taskType:'evil'})).status,400);
 const queued=await post(chat,'chat',body);assert.equal(queued.status,202);
+const recover=async id=>await (await chat.GET(new Request('http://localhost:5173/api/textbook/chat?requestId='+id))).json();
+let restored=await recover(body.requestId);assert.equal(restored.selectedSessionId,queued.data.job.session_id);assert.equal(restored.messages[0].status,'queued');assert.ok(Number.isInteger(restored.serverNow));assert.equal(restored.messages[0].leased_at,null);
+state.signIn('other');assert.equal((await recover(body.requestId)).selectedSessionId,null);state.signIn('owner');
 assert.equal((await post(chat,'chat',body)).status,200);
+assert.equal(db.prepare('SELECT COUNT(*) AS n FROM textbook_jobs WHERE id=?').get(body.requestId).n,1);
 assert.equal((await post(chat,'chat',{...body,taskType:'qa'})).status,409);
 const job=(await post(bridge,'bridge',{action:'claim'},auth)).data.job;assert.equal(job.task_type,'exam');assert.equal(job.history_json,'[]');
+restored=await recover(body.requestId);assert.equal(restored.messages[0].status,'running');assert.ok(restored.messages[0].leased_at>0);
 const refs=[{rank:1,bookSha:'edcc38b168485d49a369c9dd8a45a637e91189e16941b31c86196cc4bfe961a9',chunkId:'a'.repeat(64),content:'MTBF为平均故障间隔时间。',pdfPages:[323],label:'教材308页（PDF323页）',chapter:'第9章'}];
 const practice={question:'故障间隔缩写？',options:[{label:'A',text:'MTBF'},{label:'B',text:'MTTR'},{label:'C',text:'ROI'},{label:'D',text:'DPI'}],correct:'A',explanation:'MTBF是平均故障间隔。[片段1]',ranks:[1]};
 const done={action:'complete',id:job.id,lease:job.lease,answer:'答案A [片段1]',references:refs,practice,retrievalQuery:body.question.replace(/\n/g,' '),rewriteRoute:'direct'};
@@ -60,6 +65,7 @@ assert.equal((await post(bridge,'bridge',{...done,lease:crypto.randomUUID()},aut
 assert.equal((await post(bridge,'bridge',done,auth)).status,200);
 const get=async()=>{const r=await chat.GET(new Request('http://localhost:5173/api/textbook/chat?sessionId='+queued.data.job.session_id));return r.json();};
 let history=await get();assert.equal(history.messages[0].task_type,'exam');assert.deepEqual(Object.keys(history.messages[0].practice).sort(),['options','question']);assert.ok(!JSON.stringify(history).includes('explanation'));
+restored=await recover(body.requestId);assert.equal(restored.messages[0].status,'done');assert.ok(restored.messages[0].leased_at>0);
 state.signIn('other');assert.equal((await post(exam,'exam',{jobId:job.id,choice:'A'})).status,404);state.signIn('owner');
 assert.equal((await post(exam,'exam',{jobId:job.id,choice:'A'},{Origin:'https://evil.example'})).status,403);
 assert.equal((await post(exam,'exam',{jobId:job.id,choice:'Z'})).status,400);
@@ -71,4 +77,5 @@ db.prepare('INSERT INTO textbook_sessions VALUES(?,?,?,?,?)').run(caseSession,'o
 db.prepare("INSERT INTO textbook_jobs(id,session_id,owner_id,question,status,created_at,task_type,lease,leased_at) VALUES(?,?,?,?,'running',?,'case',?,?)").run(caseJob,caseSession,'owner','背景'.repeat(1800)+'当前小问',state.now(),caseLease,state.now());
 assert.equal((await post(bridge,'bridge',{action:'complete',id:caseJob,lease:caseLease,answer:'案例参考[片段1]',references:refs,practice:null,retrievalQuery:'背景'.repeat(1800)+'当前小问',rewriteRoute:'direct'},auth)).status,200);
 const hidden=await (await chat.GET(new Request('http://localhost:5173/api/textbook/chat?sessionId='+caseSession))).json();assert.equal(hidden.messages.length,0);assert.ok(!hidden.sessions.some(s=>s.id===caseSession));
+assert.equal((await recover(caseJob)).selectedSessionId,null);
 console.log(JSON.stringify({passed:true,checks:['owner','origin','readiness','idempotency','task_type','claim','valid_sources','lease','hidden_solution','atomic_choice','saved_reload']}));
