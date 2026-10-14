@@ -1,0 +1,11 @@
+import fs from 'node:fs';import path from 'node:path';import {pathToFileURL} from 'node:url';import assert from 'node:assert/strict';import ts from 'typescript';import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';
+const d=path.resolve('outputs/token-usage-render');fs.mkdirSync(d,{recursive:true});
+const file='app/textbook/answer-usage.tsx',out=path.join(d,'answer-usage.mjs');fs.writeFileSync(out,ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{jsx:ts.JsxEmit.ReactJSX,module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText);
+const {default:Usage}=await import(pathToFileURL(out).href);const usage={scope:'answer_generation',inputTokens:4800,outputTokens:506,totalTokens:5306,reportedCalls:2,unreportedCalls:0,models:['MiniMax-M3']};
+const render=v=>renderToStaticMarkup(React.createElement(Usage,{usage:v}));
+let html=render(usage);for(const text of ['输入 4,800','输出 506','Token','答案生成用量','MiniMax-M3','合计','5,306','不包含问题重写'])assert.ok(html.includes(text),text);
+html=render({...usage,unreportedCalls:1});assert.ok(html.includes('部分调用用量'));
+html=render(null);assert.ok(html.includes('Token 用量未提供'));assert.ok(!html.includes('输入 0'));
+html=render({...usage,outputTokens:0,totalTokens:4800});assert.ok(html.includes('输出 0'));
+const chat=fs.readFileSync('app/textbook/textbook-chat.tsx','utf8');assert.ok(chat.includes('<AnswerUsage usage={m.tokenUsage}'));
+console.log('Token usage render checks passed');

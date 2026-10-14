@@ -6,6 +6,7 @@ from exam import EXAM_SYSTEM,question_kind,exam_system,reconcile_sources,validat
 from screenshots import RECOGNITION_SYSTEM,parse_recognition,validate_question_images
 from essays import validate_essay_task,essay_system
 from qa_fallback import parse_gate,qa_system,validate_ai_text,supplement_answer,serialize_mixed
+from generation_usage_code import failure_transport
 
 HERE=Path(__file__).resolve().parent.parent/'sysarch-fullbook'
 PURE='\n'.join((HERE/n).read_text(encoding='utf-8') for n in ['citation_format.py','source_references.py']).replace('from citation_format import source_hint\n','')
@@ -28,7 +29,7 @@ class TextbookEvidenceSnapshot(Component):
 '''
 
 def generation_code():
- return Path(__file__).with_name('streaming.py').read_text(encoding='utf-8')+'''
+ code=Path(__file__).with_name('token_usage.py').read_text(encoding='utf-8')+'\n'+Path(__file__).with_name('streaming.py').read_text(encoding='utf-8').replace('from token_usage import response_usage,add_response\n','')+'''
 import asyncio,base64,json,re,struct,time
 from langchain_core.messages import SystemMessage,HumanMessage
 from lfx.custom import Component
@@ -91,9 +92,11 @@ class TextbookSingleEvidenceAnswer(Component):
   deadline=asyncio.get_running_loop().time()+max(1,min(180,data['timeoutSeconds']))
   stream_info=data.get('stream')
   box=Mailbox(stream_info['id'],stream_info['lease'],create=False) if stream_info and qa_kind in ('qa','qa_fallback','qa_mixed','exam') else None
+  usage=new_usage()
   for attempt in range(2):
    messages=[SystemMessage(content=system),HumanMessage(content=content)]
-   raw=await asyncio.wait_for(consume_model(model,messages,box,qa_kind) if box else model.ainvoke(messages),timeout=max(0.1,deadline-asyncio.get_running_loop().time()))
+   raw=await asyncio.wait_for(consume_model(model,messages,box,qa_kind,usage) if box else model.ainvoke(messages),timeout=max(0.1,deadline-asyncio.get_running_loop().time()))
+   if not box:add_response(usage,raw,getattr(model,'model_name',''))
    raw=raw if isinstance(raw,str) else raw.content
    if data.get('taskType')=='recognize':return Message(text=json.dumps(parse_recognition(raw),ensure_ascii=False))
    if qa_kind=='qa_gate':return Message(text=json.dumps(parse_gate(raw,data['answerContext']),ensure_ascii=False))
@@ -103,9 +106,11 @@ class TextbookSingleEvidenceAnswer(Component):
     parsed=reconcile_sources(parsed,data['references'],ids)
     if is_exam and (data.get('taskType')=='case' or question_kind(data['answerContext'])!='choice'):parsed['practice']=None
     if is_essay:parsed.pop('practice',None)
+    parsed['tokenUsage']=usage
     return Message(text=json.dumps(parsed,ensure_ascii=False))
    except ValueError as error:
     recoverable=isinstance(error,json.JSONDecodeError) or any(s in str(error) for s in ('Incomplete exam envelope','Incomplete answer envelope','Invalid answer JSON','Unknown figure','Unknown answer citation','Incomplete figure declaration','Unexpected answer output','Invalid visual answer','Invalid visual text','Invalid visual response type','Invalid mixed QA envelope','Invalid AI supplement'))
     if attempt or not recoverable or deadline-asyncio.get_running_loop().time()<8:raise
     system+='\\n上一次输出的格式或来源标记未通过校验。请对同一个问题和同一份资料重新简洁作答，完整闭合final_answer与used_figures，严格使用上方允许的片段编号和原图id。如果本轮要求practice则写null；未要求则不输出practice。普通文字答案必须写入final_answer，不得输出标签外文字或直接裸输出Markdown。资料未解释所问概念时，在final_answer说明本次证据不足，不编造定义或引用。不得引用用户截图作为教材来源。'
 '''
+ return failure_transport(code)

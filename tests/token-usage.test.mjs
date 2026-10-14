@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {tokenUsage,storedTokenUsage} from '../lib/textbook/token-usage.ts';
+const valid={scope:'answer_generation',inputTokens:4800,outputTokens:506,totalTokens:5306,reportedCalls:1,unreportedCalls:0,models:['MiniMax-M3']};
+assert.deepEqual(tokenUsage(valid),valid);
+assert.equal(tokenUsage(null),null);assert.equal(storedTokenUsage('invalid json'),null);
+for(const value of [-1,'10',true,Infinity,1.5,100000001])assert.throws(()=>tokenUsage({...valid,inputTokens:value}));
+assert.throws(()=>tokenUsage({...valid,totalTokens:10}));assert.throws(()=>tokenUsage({...valid,models:['<script>']}));
+assert.throws(()=>tokenUsage({...valid,scope:'all_rag'}));
+assert.deepEqual(tokenUsage({...valid,inputTokens:null,outputTokens:null,totalTokens:null,reportedCalls:0,unreportedCalls:1}),{...valid,inputTokens:null,outputTokens:null,totalTokens:null,reportedCalls:0,unreportedCalls:1});
+assert.equal(storedTokenUsage(JSON.stringify(valid)).inputTokens,4800);
+console.log('Token usage validation passed');

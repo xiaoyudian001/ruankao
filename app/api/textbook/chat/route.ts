@@ -6,6 +6,7 @@ import {validTaskType,sameTaskRequest,savedPractice,practiceView} from '../../..
 import {parseManifest} from '../../../../lib/textbook/screenshots';
 import {LIVE_CHAT,UNDELETED_SESSION} from '../../../../lib/textbook/sessions';
 import {answerSelection,sameAnswerAction,originalHistory} from '../../../../lib/textbook/answer-actions';
+import {storedTokenUsage} from '../../../../lib/textbook/token-usage';
 
 export async function GET(request: Request) {
   try {
@@ -20,8 +21,8 @@ export async function GET(request: Request) {
     const visible=candidate?await database().prepare(UNDELETED_SESSION).bind(candidate,user.userId).first():null;
     const sessionId=visible?candidate:null;
     const sessions = await database().prepare(`SELECT id, title, updated_at FROM textbook_sessions WHERE ${LIVE_CHAT} ORDER BY updated_at DESC,id DESC LIMIT 50`).bind(user.userId).all();
-    const messages = sessionId ? await database().prepare("SELECT id, question, status, answer, error, elapsed_ms, created_at, leased_at, retrieval_mode, retrieval_query, rewrite_route, references_json, task_type, exam_json, practice_choice,screenshot_json,answer_action,source_job_id,partial_answer,partial_seq,cancel_requested FROM textbook_jobs WHERE owner_id=? AND session_id=? AND task_type IN ('qa','exam') ORDER BY created_at,rowid LIMIT 200").bind(user.userId,sessionId).all() : {results:[]};
-    const summaries=messages.results.map(row=>{const {references_json,exam_json,practice_choice,screenshot_json,...message}=row;const refs=sourceSummaries(references_json);let practice=null,screenshotId=null,screenshotCount=0;try{practice=practiceView(savedPractice(exam_json,refs.map(r=>r.rank)),practice_choice);}catch{/* Preserve a usable original answer if practice is corrupt. */}try{if(screenshot_json){const manifest=parseManifest(screenshot_json);screenshotId=manifest.recognitionId;screenshotCount=manifest.images.length;}}catch{}return {...message,references:refs,practice,screenshotId,screenshotCount};});
+    const messages = sessionId ? await database().prepare("SELECT id, question, status, answer, error, elapsed_ms, created_at, leased_at, retrieval_mode, retrieval_query, rewrite_route, references_json, task_type, exam_json, practice_choice,screenshot_json,answer_action,source_job_id,partial_answer,partial_seq,cancel_requested,token_usage_json FROM textbook_jobs WHERE owner_id=? AND session_id=? AND task_type IN ('qa','exam') ORDER BY created_at,rowid LIMIT 200").bind(user.userId,sessionId).all() : {results:[]};
+    const summaries=messages.results.map(row=>{const {references_json,exam_json,practice_choice,screenshot_json,token_usage_json,...message}=row;const refs=sourceSummaries(references_json);let practice=null,screenshotId=null,screenshotCount=0;try{practice=practiceView(savedPractice(exam_json,refs.map(r=>r.rank)),practice_choice);}catch{/* Preserve a usable original answer if practice is corrupt. */}try{if(screenshot_json){const manifest=parseManifest(screenshot_json);screenshotId=manifest.recognitionId;screenshotCount=manifest.images.length;}}catch{}return {...message,tokenUsage:storedTokenUsage(token_usage_json),references:refs,practice,screenshotId,screenshotCount};});
     return json({sessions:sessions.results,messages:summaries,selectedSessionId:sessionId,serverNow:now(),...await bridgeState()});
   } catch (error) {
     console.error('textbook read', error instanceof Error ? error.name : 'error');

@@ -1,6 +1,7 @@
 """Private per-lease mailbox: visible answer snapshots and cooperative cancellation."""
 import asyncio,json,os,re,shutil,tempfile,time,uuid,threading
 from pathlib import Path
+from token_usage import response_usage,add_response
 
 class GenerationStopped(Exception):pass
 
@@ -41,12 +42,14 @@ class Mailbox:
  def cancelled(self):return not self.directory.is_dir() or (self.directory/'stop').exists()
  def cleanup(self):shutil.rmtree(self.directory,ignore_errors=True)
 
-async def consume_model(model,messages,box,kind):
+async def consume_model(model,messages,box,kind,usage=None):
  raw='';last='';published=0.;box.publish('')
  # Recent LangChain treats an explicitly set streaming=False as a hard
  # opt-out, even for astream(). Copy the handle for this answer only.
  if getattr(model,'streaming',None) is False and hasattr(model,'model_copy'):model=model.model_copy(update={'streaming':True})
  options={'extra_body':{'reasoning_split':True}} if str(getattr(model,'model_name','')).startswith('MiniMax') else {}
+ if usage is not None:options['stream_options']={'include_usage':True}
+ last_usage=None
  iterator=model.astream(messages,**options).__aiter__();next_chunk=None
  try:
   while True:
@@ -58,6 +61,7 @@ async def consume_model(model,messages,box,kind):
    except StopAsyncIteration:break
    finally:next_chunk=None
    content=chunk.content
+   if response_usage(chunk) is not None:last_usage=chunk
    if isinstance(content,list):content=''.join(p.get('text','') for p in content if isinstance(p,dict) and p.get('type')=='text')
    if isinstance(content,str):raw+=content
    if len(raw)>200000:raise ValueError('Stream answer budget exceeded')
@@ -65,6 +69,7 @@ async def consume_model(model,messages,box,kind):
    if text!=last and time.monotonic()-published>=.3:box.publish(text);last=text;published=time.monotonic()
   text=visible_answer(raw,kind)[:60000]
   if text!=last:box.publish(text)
+  if usage is not None:add_response(usage,last_usage,getattr(model,'model_name',''))
   return raw
  finally:
   if next_chunk is not None:

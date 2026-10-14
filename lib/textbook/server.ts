@@ -37,7 +37,7 @@ AND status='queued' AND NOT EXISTS (SELECT 1 FROM textbook_jobs WHERE status='ru
 AND NOT EXISTS (SELECT 1 FROM textbook_critiques WHERE status='running')
 RETURNING id, question, session_id, lease, retrieval_mode, history_json, task_type, screenshot_json, task_payload_json`;
 
-export const COMPLETE_SQL = `UPDATE textbook_jobs SET status=CASE WHEN cancel_requested=1 THEN 'cancelled' ELSE ? END, answer=CASE WHEN cancel_requested=1 THEN partial_answer ELSE ? END, error=CASE WHEN cancel_requested=1 THEN NULL ELSE ? END, completed_at=?, elapsed_ms=?, retrieval_query=?, rewrite_route=?, references_json=CASE WHEN cancel_requested=1 THEN '[]' ELSE ? END, exam_json=CASE WHEN cancel_requested=1 THEN NULL ELSE ? END, lease=NULL
+export const COMPLETE_SQL = `UPDATE textbook_jobs SET status=CASE WHEN cancel_requested=1 THEN 'cancelled' ELSE ? END, answer=CASE WHEN cancel_requested=1 THEN partial_answer ELSE ? END, error=CASE WHEN cancel_requested=1 THEN NULL ELSE ? END, completed_at=?, elapsed_ms=?, retrieval_query=?, rewrite_route=?, references_json=CASE WHEN cancel_requested=1 THEN '[]' ELSE ? END, exam_json=CASE WHEN cancel_requested=1 THEN NULL ELSE ? END, token_usage_json=CASE WHEN cancel_requested=1 THEN NULL ELSE ? END, lease=NULL
 WHERE id=? AND status='running' AND lease=? AND leased_at >= ? RETURNING id`;
 
 export const HISTORY_SQL = `SELECT question,answer FROM textbook_jobs

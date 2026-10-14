@@ -179,7 +179,13 @@ class LocalFlow:
         encoded='single-answer-b64-v1:'+base64.b64encode(json.dumps(wire,ensure_ascii=False).encode()).decode()
         body={'input_request':{'input_value':encoded,'input_type':'chat','output_type':'any','output_component':'SingleEvidenceAnswer-SysArch','session_id':'answer-'+job['id'],'tweaks':{'ChatInput-z2rit':{'should_store_message':False}}}}
         output=self.call('/run/session/'+state['generation'],body,timeout=timeout)
-        return parse_generation(visual_text(output),[r['id'] for r in selected],[r['rank'] for r in wire['references']],wire['taskType'] in ('exam','case'))
+        value=json.loads(visual_text(output));usage=value.pop('tokenUsage',None)
+        if 'generationError' in value:
+            failure=value['generationError'];reason=failure.get('reason','Answer generation failed')
+            error=TimeoutError(reason) if failure.get('kind')=='TimeoutError' else ValueError(reason)
+            error.token_usage=usage;raise error
+        parsed=parse_generation(json.dumps(value,ensure_ascii=False),[r['id'] for r in selected],[r['rank'] for r in wire['references']],wire['taskType'] in ('exam','case'))
+        return {**parsed,'tokenUsage':usage}
 
     def assess_qa(self,job,snapshot,query,timeout=40):
         from figures import visual_text

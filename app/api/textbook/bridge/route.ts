@@ -8,6 +8,7 @@ import {validateCritique} from '../../../../lib/review/critique';
 import {validatePractice} from '../../../../lib/textbook/exam';
 import {parseManifest,validateRecognition,pngInfo} from '../../../../lib/textbook/screenshots';
 import {progressSnapshot,PROGRESS_SQL,STOPPED_SQL} from '../../../../lib/textbook/streaming';
+import {tokenUsage} from '../../../../lib/textbook/token-usage';
 
 export async function POST(request: Request) {
   if (!bridgeAuth(request)) return json({error:'Unauthorized'},401);
@@ -79,10 +80,11 @@ export async function POST(request: Request) {
       if(!job)return json({error:'Late result'},409);
       if(job.cancel_requested===1){const stopped=await database().prepare(STOPPED_SQL).bind(now(),body.id,body.lease,now()-240).first();return json({ok:Boolean(stopped)},stopped?200:409);}
       if(job.task_type==='recognize')return json({error:'Wrong task result type'},400);
+      let usage;try{usage=tokenUsage(body.tokenUsage);}catch{return json({error:'Invalid token usage'},400);}
       const diagnostic=rewriteDiagnostic(body,job.task_type==='case'?6000:2000);
       let practice=null;
       try{if(answer&&job.task_type==='exam')practice=validatePractice(body.practice,refs.map(r=>r.rank));else if(body.practice!=null)return json({error:'Unexpected practice'},400);}catch{return json({error:'Invalid practice'},400);}
-      const changed = await database().prepare(COMPLETE_SQL).bind(answer?'done':'failed',answer||null,error||null,now(),Math.max(0,Math.min(240000,Number(body.elapsedMs)||0)),diagnostic.query,diagnostic.route,JSON.stringify(refs),practice?JSON.stringify(practice):null,body.id,body.lease,now()-240).first();
+      const changed = await database().prepare(COMPLETE_SQL).bind(answer?'done':'failed',answer||null,error||null,now(),Math.max(0,Math.min(240000,Number(body.elapsedMs)||0)),diagnostic.query,diagnostic.route,JSON.stringify(refs),practice?JSON.stringify(practice):null,usage?JSON.stringify(usage):null,body.id,body.lease,now()-240).first();
       return json({ok:Boolean(changed)},changed?200:409);
     }
     return json({error:'Invalid action'},400);

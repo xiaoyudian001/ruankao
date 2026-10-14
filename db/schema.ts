@@ -59,6 +59,7 @@ export const textbookJobs = sqliteTable("textbook_jobs", {
   lease: text("lease"),
   leasedAt: integer("leased_at"),
   elapsedMs: integer("elapsed_ms"),
+  tokenUsageJson:text('token_usage_json'),
 });
 
 export const textbookSessionDeletions=sqliteTable('textbook_session_deletions',{

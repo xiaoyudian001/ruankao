@@ -4,6 +4,7 @@ from pathlib import Path
 from figures import (select_figures,load_catalog,visual_query,visual_payload,cite_original_pages)
 from conversation_rewrite import CLARIFY,answer_context
 from answer_citations import normalize_citations
+from token_usage import new_usage,merge_usage
 
 WARNING='\n\n> 本次原页解析未完成，以上为正文检索答案；图中细节请对照原页或稍后重试。'
 
@@ -34,7 +35,7 @@ def prepare_visual(question,query,snapshot,timings):
  return selected,payload,extra
 
 def run_single_pass(local,job,budget=220):
- start=time.monotonic();timings={'answerCalls':0,'questionMs':0,'textRetrievalMs':0,'visualRetrievalMs':0,'visualRerankMs':0,'imagePrepareMs':0,'generationMs':0}
+ start=time.monotonic();usage=new_usage();timings={'answerCalls':0,'questionMs':0,'textRetrievalMs':0,'visualRetrievalMs':0,'visualRerankMs':0,'imagePrepareMs':0,'generationMs':0}
  def measured(name,fn):
   mark=time.monotonic()
   try:return fn()
@@ -82,7 +83,10 @@ def run_single_pass(local,job,budget=220):
   context=answer_context(job['question'],plan['query'],plan['history'])
   def generate(images,wire):
    timings['answerCalls']+=1
-   parsed=measured('generationMs',lambda:local.generate_evidence(generation_job,snapshot,context,images,wire,timeout=min(150 if job.get('question_images') else 90 if images else 185,remaining())))
+   try:parsed=measured('generationMs',lambda:local.generate_evidence(generation_job,snapshot,context,images,wire,timeout=min(150 if job.get('question_images') else 90 if images else 185,remaining())))
+   except Exception as error:
+    merge_usage(usage,getattr(error,'token_usage',None));raise
+   merge_usage(usage,parsed.pop('tokenUsage',None))
    from exam import reconcile_sources
    parsed=reconcile_sources(parsed,wire.get('references',snapshot['references']),[r['id'] for r in images])
    adopted=set(parsed['usedFigureIds'])
@@ -122,7 +126,7 @@ def run_single_pass(local,job,budget=220):
   result={'answer':answer,'references':refs}
   if is_exam:result['practice']=parsed['practice']
  timings['totalMs']=round((time.monotonic()-start)*1000)
- return {**result,'retrievalQuery':plan['query'],'rewriteRoute':plan['route'],'timings':timings}
+ return {**result,'tokenUsage':usage if timings['answerCalls'] else None,'retrievalQuery':plan['query'],'rewriteRoute':plan['route'],'timings':timings}
 
 def record_timings(job_id,timings):
  # Local diagnostics contain no questions, history, textbook text or credentials.

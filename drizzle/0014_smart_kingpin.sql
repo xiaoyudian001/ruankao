@@ -1,0 +1,1 @@
+ALTER TABLE `textbook_jobs` ADD `token_usage_json` text;
